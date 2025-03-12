@@ -34,9 +34,9 @@ pub fn execute(program: Program) {
 
     let mut registers = Registers::default();
     'execution: for block in program.text.blocks {
-        log::trace!("Executing block {}...", block.label);
+        log::trace!("Executing block {}...", block.show_color());
         for instruction in block.instructions {
-            log::trace!("Executing instruction {:?}", instruction);
+            log::trace!("Executing instruction {}", instruction.show_color());
             let mut arith = |operation: fn(Word, Word) -> Word| {
                 arithmetic(&mut registers, &program.data, &instruction.args, operation)
             };
@@ -255,10 +255,15 @@ mod test {
         let input = include_str!("../tests/prog1.asm");
         let prog = parse(input);
         assert_ne!(prog, None);
-        let prog = prog.unwrap();
-        log::trace!("====== Parsed Program ======\n{}", prog.show());
+        let program = prog.unwrap();
+        log::trace!("====== Parsed Program ======\n{}", program.show_color());
         log::trace!("====== Executing Program ======");
-        execute(prog);
+        let entry = program
+            .text
+            .entry_block()
+            .expect("No entry block found")
+            .address;
+        execute(program, entry);
         log::trace!("====== Done ======");
     }
 }
