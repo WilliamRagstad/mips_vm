@@ -1,12 +1,19 @@
-use colorful::{Color, Colorful};
 use std::collections::HashMap;
 
+use colorful::{Color, Colorful};
+
+/// Represents an address in a MIPS program.
 pub type Address = u32;
+
+/// Represents a 32 bits long word in a MIPS program.
 pub type Word = u32;
 
+/// Represents the different sections of a MIPS program.
 #[derive(Debug, PartialEq)]
 pub enum Section {
+    /// The data section, which contains global and static data.
     Data,
+    /// The text section, which contains the executable instructions.
     Text,
 }
 
@@ -26,10 +33,14 @@ impl Section {
     }
 }
 
+/// Represents raw data in the data section.
 #[derive(Debug, PartialEq)]
 pub struct RawData {
+    /// The source code of the data directive.
     pub source: String,
+    /// The address where the data is stored.
     pub address: Address,
+    /// The actual data bytes.
     pub data: Vec<u8>,
 }
 
@@ -58,12 +69,18 @@ impl RawData {
     }
 }
 
+/// Represents the data section of a MIPS program.
 #[derive(Debug, PartialEq)]
 pub struct DataSection {
+    /// A map of global labels to their corresponding raw data.
     pub globals: HashMap<String, RawData>,
 }
 
 impl DataSection {
+    pub fn address_of_label(&self, label: &str) -> Option<Address> {
+        self.globals.get(label).map(|data| data.address)
+    }
+
     pub fn show(&self) -> String {
         let mut result = String::new();
         for (label, directive) in &self.globals {
@@ -91,31 +108,164 @@ impl DataSection {
     }
 }
 
+/// Represents the different kinds of MIPS instructions.
 #[derive(Debug, PartialEq)]
 pub enum InstructionKind {
+    /// Add two registers and store the result in a register.
+    ///
+    /// Syntax: `add $d, $s, $t`
+    ///
+    /// Description: `$d = $s + $t`
     Add,
+    /// Subtract one register from another and store the result in a register.
+    ///
+    /// Syntax: `sub $d, $s, $t`
+    ///
+    /// Description: `$d = $s - $t`
     Sub,
+    /// Multiply two registers and store the result in a register.
+    ///
+    /// Syntax: `mul $d, $s, $t`
+    ///
+    /// Description: `$d = $s * $t`
     Mul,
+    /// Divide one register by another and store the result in a register.
+    ///
+    /// Syntax: `div $d, $s, $t`
+    ///
+    /// Description: `$d = $s / $t`
     Div,
+    /// Perform a bitwise AND on two registers and store the result in a register.
+    ///
+    /// Syntax: `and $d, $s, $t`
+    ///
+    /// Description: `$d = $s & $t`
     And,
+    /// Perform a bitwise ANDI on two registers and store the result in a register.
+    ///
+    /// Syntax: `andi $d, $s, immediate`
+    ///
+    /// Description: `$d = $s & immediate`
+    Andi,
+    /// Perform a bitwise OR on two registers and store the result in a register.
+    ///
+    /// Syntax: `or $d, $s, $t`
+    ///
+    /// Description: `$d = $s | $t`
     Or,
+    /// Perform a bitwise XOR on two registers and store the result in a register.
+    ///
+    /// Syntax: `xor $d, $s, $t`
+    ///
+    /// Description: `$d = $s ^ $t`
     Xor,
+    /// Perform a bitwise NOR on two registers and store the result in a register.
+    ///
+    /// Syntax: `nor $d, $s, $t`
+    ///
+    /// Description: `$d = ~($s | $t)`
     Nor,
+    /// Set a register to 1 if one register is less than another, otherwise set it to 0.
+    ///
+    /// Syntax: `slt $d, $s, $t`
+    ///
+    /// Description: `$d = ($s < $t) ? 1 : 0`
     Slt,
+    /// Shift a register left by a specified number of bits and store the result in a register.
+    ///
+    /// Syntax: `sll $d, $t, shamt`
+    ///
+    /// Description: `$d = $t << shamt`
     Sll,
+    /// Shift a register right by a specified number of bits and store the result in a register.
+    ///
+    /// Syntax: `srl $d, $t, shamt`
+    ///
+    /// Description: `$d = $t >> shamt`
     Srl,
+    /// Shift a register right by a specified number of bits with sign extension and store the result in a register.
+    ///
+    /// Syntax: `sra $d, $t, shamt`
+    ///
+    /// Description: `$d = $t >> shamt` (arithmetic shift)
     Sra,
-    Jr,
+    /// Branch if two registers are equal.
+    ///
+    /// Syntax: `beq $s, $t, offset`
+    ///
+    /// Description: `if ($s == $t) branch to address PC + 4 + (offset * 4)`
     Beq,
+    /// Branch if two registers are not equal.
+    ///
+    /// Syntax: `bne $s, $t, offset`
+    ///
+    /// Description: `if ($s != $t) branch to address PC + 4 + (offset * 4)`
     Bne,
+    /// Load a word from memory into a register.
+    ///
+    /// Syntax: `lw $t, offset($s)`
+    ///
+    /// Description: `$t = Memory[$s + offset]`
     Lw,
+    /// Store a word from a register into memory.
+    ///
+    /// Syntax: `sw $t, offset($s)`
+    ///
+    /// Description: `Memory[$s + offset] = $t`
     Sw,
+    /// Load an immediate value into a register.
+    ///
+    /// Syntax: `li $t, immediate`
+    ///
+    /// Description: `$t = immediate`
     Li,
+    /// Load an upper immediate value into a register.
+    ///
+    /// Syntax: `lui $t, immediate`
+    ///
+    /// Description: `$t = immediate << 16`
+    Lui,
+    /// Move a value from one register to another.
+    ///
+    /// Syntax: `move $d, $s`
+    ///
+    /// Description: `$d = $s`
     Move,
+    /// Load the address of a label into a register.
+    ///
+    /// Syntax: `la $t, label`
+    ///
+    /// Description: `$t = address of label`
     La,
+    /// Unconditional branch to a label.
+    ///
+    /// Syntax: `b label`
+    ///
+    /// Description: `branch to address of label`
     B,
+    /// Jump to a label.
+    ///
+    /// Syntax: `j label`
+    ///
+    /// Description: `jump to address of label`
     J,
+    /// Jump to the address contained in a register.
+    ///
+    /// Syntax: `jr $s`
+    ///
+    /// Description: `jump to address in $s`
+    Jr,
+    /// Jump and link to a label (store return address in $ra).
+    ///
+    /// Syntax: `jal label`
+    ///
+    /// Description: `$ra = PC + 4; jump to address of label`
     Jal,
+    /// Perform a system call.
+    ///
+    /// Syntax: `syscall`
+    ///
+    /// Description: `perform a system call`
     Syscall,
 }
 
@@ -127,6 +277,7 @@ impl InstructionKind {
             InstructionKind::Mul => "mul",
             InstructionKind::Div => "div",
             InstructionKind::And => "and",
+            InstructionKind::Andi => "andi",
             InstructionKind::Or => "or",
             InstructionKind::Xor => "xor",
             InstructionKind::Nor => "nor",
@@ -140,6 +291,7 @@ impl InstructionKind {
             InstructionKind::Lw => "lw",
             InstructionKind::Sw => "sw",
             InstructionKind::Li => "li",
+            InstructionKind::Lui => "lui",
             InstructionKind::Move => "move",
             InstructionKind::La => "la",
             InstructionKind::B => "b",
@@ -158,6 +310,7 @@ impl From<&str> for InstructionKind {
             "mul" => InstructionKind::Mul,
             "div" => InstructionKind::Div,
             "and" => InstructionKind::And,
+            "andi" => InstructionKind::Andi,
             "or" => InstructionKind::Or,
             "xor" => InstructionKind::Xor,
             "nor" => InstructionKind::Nor,
@@ -171,6 +324,7 @@ impl From<&str> for InstructionKind {
             "lw" => InstructionKind::Lw,
             "sw" => InstructionKind::Sw,
             "li" => InstructionKind::Li,
+            "lui" => InstructionKind::Lui,
             "move" => InstructionKind::Move,
             "la" => InstructionKind::La,
             "b" => InstructionKind::B,
@@ -182,6 +336,7 @@ impl From<&str> for InstructionKind {
     }
 }
 
+/// Represents a MIPS register.
 #[derive(Debug, PartialEq, Hash, Eq, Clone, Copy)]
 pub enum Register {
     Zero,
@@ -297,10 +452,16 @@ impl From<&str> for Register {
     }
 }
 
+/// Represents an argument to a MIPS instruction.
 #[derive(Debug, PartialEq)]
 pub enum InstructionArg {
+    /// A register argument.
     Register(Register),
+    /// An immediate value argument.
     Immediate(i32),
+    /// Register offset argument.
+    RegisterOffset(Register, Word),
+    /// A label argument.
     Label(String),
 }
 
@@ -309,6 +470,7 @@ impl InstructionArg {
         match self {
             InstructionArg::Register(r) => r.show().to_string(),
             InstructionArg::Immediate(i) => i.to_string(),
+            InstructionArg::RegisterOffset(r, offset) => format!("{}({})", offset, r.show()),
             InstructionArg::Label(l) => l.to_string(),
         }
     }
@@ -317,15 +479,24 @@ impl InstructionArg {
         match self {
             InstructionArg::Register(r) => r.show().color(Color::Orange1).to_string(),
             InstructionArg::Immediate(i) => i.to_string().magenta().to_string(),
+            InstructionArg::RegisterOffset(r, offset) => {
+                format!("{}({})", offset.to_string().magenta(), r.show())
+                    .color(Color::Orange1)
+                    .to_string()
+            }
             InstructionArg::Label(l) => l.to_string().light_green().to_string(),
         }
     }
 }
 
+/// Represents a MIPS instruction.
 #[derive(Debug, PartialEq)]
 pub struct Instruction {
+    /// The address of the instruction.
     pub address: Address,
+    /// The kind of instruction.
     pub kind: InstructionKind,
+    /// The arguments to the instruction.
     pub args: Vec<InstructionArg>,
 }
 
@@ -361,10 +532,14 @@ impl Instruction {
     }
 }
 
+/// Represents a block of instructions in the text section.
 #[derive(Debug, PartialEq)]
 pub struct Block {
+    /// The address of the block.
     pub address: Address,
+    /// The label of the block.
     pub label: String,
+    /// The instructions in the block.
     pub instructions: Vec<Instruction>,
 }
 
@@ -386,13 +561,46 @@ impl Block {
     }
 }
 
+/// Represents the text section of a MIPS program.
 #[derive(Debug, PartialEq)]
 pub struct TextSection {
+    /// The blocks of instructions.
     pub blocks: Vec<Block>,
+    /// The global labels in the text section.
     pub global_labels: Vec<String>,
 }
 
 impl TextSection {
+    pub fn find_block_by_address(&self, address: Address) -> Option<&Block> {
+        self.blocks.iter().find(|block| block.address == address)
+    }
+
+    pub fn find_instruction_by_address(&self, address: Address) -> Option<&Instruction> {
+        for block in &self.blocks {
+            for instruction in &block.instructions {
+                if instruction.address == address {
+                    return Some(instruction);
+                }
+            }
+        }
+        None
+    }
+
+    pub fn address_of_label(&self, label: &str) -> Option<Address> {
+        self.blocks
+            .iter()
+            .find(|block| block.label == label)
+            .map(|block| block.address)
+    }
+
+    pub fn entry_block(&self) -> Option<&Block> {
+        self.blocks.iter().find(|block| {
+            block.label.contains("main")
+                || block.label.contains("entry")
+                || block.label.contains("start")
+        })
+    }
+
     pub fn show(&self) -> String {
         let mut result = String::new();
         for label in &self.global_labels {
@@ -420,13 +628,24 @@ impl TextSection {
     }
 }
 
+/// Represents a MIPS program.
 #[derive(Debug, PartialEq)]
 pub struct Program {
+    /// The data section of the program.
     pub data: DataSection,
+    /// The text section of the program.
     pub text: TextSection,
 }
 
 impl Program {
+    pub fn address_of_label(&self, label: &str) -> Option<Address> {
+        if let Some(address) = self.data.address_of_label(label) {
+            Some(address)
+        } else {
+            self.text.address_of_label(label)
+        }
+    }
+
     pub fn show(&self) -> String {
         // Data
         let mut result = format!("{}\n", Section::Data.show());

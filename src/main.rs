@@ -10,6 +10,11 @@ fn main() {
     let input = std::env::args().nth(1).expect("No input file provided");
     let input = std::fs::read_to_string(input).expect("Failed to read input file");
     if let Some(program) = parse(&input) {
-        execute(program);
+        let entry = program
+            .text
+            .entry_block()
+            .expect("No entry block found")
+            .address;
+        execute(program, entry);
     }
 }

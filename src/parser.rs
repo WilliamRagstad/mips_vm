@@ -6,7 +6,7 @@ use pest_derive::Parser;
 
 use crate::program::{
     Address, Block, DataSection, Instruction, InstructionArg, InstructionKind, Program, RawData,
-    Register, Section, TextSection,
+    Register, Section, TextSection, Word,
 };
 
 #[derive(Parser)]
@@ -159,8 +159,18 @@ pub fn parse(input: &str) -> Option<Program> {
                             match arg.as_rule() {
                                 Rule::register => args
                                     .push(InstructionArg::Register(Register::from(arg.as_str()))),
-                                Rule::immediate => args
-                                    .push(InstructionArg::Immediate(arg.as_str().parse().unwrap())),
+                                Rule::offset => {
+                                    let mut inner = arg.into_inner();
+                                    let immediate = inner.next().unwrap();
+                                    let register = Register::from(inner.next().unwrap().as_str());
+                                    args.push(InstructionArg::RegisterOffset(
+                                        register,
+                                        parse_imm(immediate) as Word,
+                                    ));
+                                }
+                                Rule::immediate => {
+                                    args.push(InstructionArg::Immediate(parse_imm(arg)))
+                                }
                                 Rule::identifier => {
                                     args.push(InstructionArg::Label(arg.as_str().to_string()))
                                 }
@@ -191,19 +201,34 @@ pub fn parse(input: &str) -> Option<Program> {
             Some(prog)
         }
         Err(e) => {
-            log::trace!("{}", e);
+            println!("{}", e.to_string().light_red());
             None
         }
     }
 }
 
+/// immediate  = @{ hex | binary | integer }
+// integer    = @{ (ASCII_DIGIT)+ }
+// hex        = @{ "0x" ~ (ASCII_HEX_DIGIT)+ }
+// binary     = @{ "0b" ~ ("0" | "1")+ }``
+fn parse_imm(arg: pest::iterators::Pair<Rule>) -> i32 {
+    let arg = arg.as_str();
+    if let Some(hex) = arg.strip_prefix("0x") {
+        i32::from_str_radix(hex, 16).unwrap()
+    } else if let Some(bin) = arg.strip_prefix("0b") {
+        i32::from_str_radix(bin, 2).unwrap()
+    } else {
+        arg.parse().unwrap()
+    }
+}
+
 #[cfg(test)]
-mod test {
+mod test_parser {
     use crate::parse;
 
     #[test]
-    fn test() {
-        let input = include_str!("../tests/prog1.asm");
+    fn hello_world() {
+        let input = include_str!("../examples/hello_world.asm");
         let prog = parse(input);
         assert_ne!(prog, None);
         let prog = prog.unwrap();

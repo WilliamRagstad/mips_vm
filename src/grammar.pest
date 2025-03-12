@@ -11,14 +11,18 @@ section_directive = @{ ".data" | ".text" }
 data_directive    = @{ ".align" | ".asciiz" | ".ascii" | ".word" | ".byte" | ".space" }
 text_directive    = @{ ".global" | ".globl" }
 
-opcode = @{ "add" | "addi" | "addiu" | "addu" | "and" | "andi" | "beq" | "bne" | "jalr" | "jr" | "j" | "jal" | "lb" | "lbu" | "lui" | "lw" | "mul" | "nor" | "or" | "ori" | "slt" | "sltu" | "slti" | "sltiu" | "sll" | "sllv" | "sra" | "srl" | "srlv" | "sb" | "sw" | "sub" | "subu" | "xor" | "xori" }
+opcode = @{ "add" | "addi" | "addiu" | "addu" | "andi" | "and" | "beq" | "bne" | "jalr" | "jal" | "jr" | "j" | "lb" | "lbu" | "lui" | "lw" | "mul" | "nor" | "or" | "ori" | "slt" | "sltu" | "slti" | "sltiu" | "sll" | "sllv" | "sra" | "srl" | "srlv" | "sb" | "sw" | "sub" | "subu" | "xor" | "xori" }
 pseudo = @{ "la" | "li" | "ble" | "move" | "nop" | "syscall" }
 
 args = _{ (arg ~ ("," ~ arg)*) }
-arg  = _{ (register | immediate | string | identifier) }
+arg  = _{ (register | offset | immediate | string | identifier) }
 
 register   = @{ "$zero" | "$at" | "$v0" | "$v1" | "$a0" | "$a1" | "$a2" | "$a3" | "$t0" | "$t1" | "$t2" | "$t3" | "$t4" | "$t5" | "$t6" | "$t7" | "$s0" | "$s1" | "$s2" | "$s3" | "$s4" | "$s5" | "$s6" | "$s7" | "$t8" | "$t9" | "$k0" | "$k1" | "$gp" | "$sp" | "$fp" | "$ra" }
-immediate  = @{ (ASCII_DIGIT)+ }
+offset     =  { immediate ~ "(" ~ register ~ ")" }
+immediate  = @{ hex | binary | integer }
+integer    = @{ (ASCII_DIGIT)+ }
+hex        = @{ "0x" ~ (ASCII_HEX_DIGIT)+ }
+binary     = @{ "0b" ~ ("0" | "1")+ }
 string     = @{ "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
 identifier = @{ (ASCII_ALPHA ~ (ASCII_ALPHA | ASCII_DIGIT | "_")*) }
 
