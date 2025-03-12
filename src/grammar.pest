@@ -1,0 +1,26 @@
+// MIPS grammar
+
+program = { SOI ~ statement* ~ EOI }
+
+statement = _{ "\n"* ~ (directive | label | instruction) ~ "\n"+ }
+
+instruction       =  { (opcode | pseudo) ~ args? }
+label             =  { identifier ~ ":" ~ (data_directive ~ arg)? }
+directive         =  { section_directive | (data_directive ~ args) | (text_directive ~ arg) }
+section_directive = @{ ".data" | ".text" }
+data_directive    = @{ ".align" | ".asciiz" | ".ascii" | ".word" | ".byte" | ".space" }
+text_directive    = @{ ".global" | ".globl" }
+
+opcode = @{ "add" | "addi" | "addiu" | "addu" | "and" | "andi" | "beq" | "bne" | "jalr" | "jr" | "j" | "jal" | "lb" | "lbu" | "lui" | "lw" | "mul" | "nor" | "or" | "ori" | "slt" | "sltu" | "slti" | "sltiu" | "sll" | "sllv" | "sra" | "srl" | "srlv" | "sb" | "sw" | "sub" | "subu" | "xor" | "xori" }
+pseudo = @{ "la" | "li" | "ble" | "move" | "nop" | "syscall" }
+
+args = _{ (arg ~ ("," ~ arg)*) }
+arg  = _{ (register | immediate | string | identifier) }
+
+register   = @{ "$zero" | "$at" | "$v0" | "$v1" | "$a0" | "$a1" | "$a2" | "$a3" | "$t0" | "$t1" | "$t2" | "$t3" | "$t4" | "$t5" | "$t6" | "$t7" | "$s0" | "$s1" | "$s2" | "$s3" | "$s4" | "$s5" | "$s6" | "$s7" | "$t8" | "$t9" | "$k0" | "$k1" | "$gp" | "$sp" | "$fp" | "$ra" }
+immediate  = @{ (ASCII_DIGIT)+ }
+string     = @{ "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
+identifier = @{ (ASCII_ALPHA ~ (ASCII_ALPHA | ASCII_DIGIT | "_")*) }
+
+WHITESPACE = _{ " " | "\t" | "\r" }
+COMMENT    = _{ "#" ~ (!"\n" ~ ANY)* }
