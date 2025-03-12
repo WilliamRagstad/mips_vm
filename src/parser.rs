@@ -5,7 +5,7 @@ use pest::Parser;
 use pest_derive::Parser;
 
 use crate::program::{
-    Block, DataSection, Instruction, InstructionArg, InstructionKind, Offset, Program, RawData,
+    Address, Block, DataSection, Instruction, InstructionArg, InstructionKind, Program, RawData,
     Register, Section, TextSection,
 };
 
@@ -19,13 +19,15 @@ pub fn parse(input: &str) -> Option<Program> {
             assert_eq!(pairs.clone().count(), 1);
             let program = pairs.clone().next().unwrap();
             let pairs = program.into_inner();
+            log::trace!("{}", "======= PAIRS =======".blue());
             for pair in pairs.clone() {
-                log::trace!("\n======= PAIR =======");
+                log::trace!("{}", "------- PAIR -------".cyan());
                 log::trace!("Rule:    {:?}", pair.as_rule());
                 log::trace!("Span:    {:?}", pair.as_span());
                 log::trace!("Text:    '{}'", pair.as_str().trim().yellow());
                 log::trace!("Inner:   {:?}", pair.into_inner().collect::<Vec<_>>());
             }
+            log::trace!("{}", "======= PROGRAM =======".blue());
             let mut prog = Program {
                 data: DataSection {
                     globals: HashMap::new(),
@@ -35,7 +37,7 @@ pub fn parse(input: &str) -> Option<Program> {
                     global_labels: Vec::new(),
                 },
             };
-            let mut offset: Offset = 0;
+            let mut address: Address = 0;
             let mut current_section: Option<Section> = None;
             let mut current_block: Option<Block> = None;
             for pair in pairs {
@@ -63,25 +65,20 @@ pub fn parse(input: &str) -> Option<Program> {
                                     }
                                     _ => unreachable!(),
                                 };
-                                log::trace!(
-                                    "  - Directive: {:?} with data: {:?}",
-                                    directive,
-                                    symbol
-                                );
                                 prog.text.global_labels.push(symbol);
                             }
                             _ => unreachable!(),
                         }
                     }
                     Rule::label => {
-                        let source = pair.as_str().trim().to_string();
                         let mut inner = pair.into_inner();
                         let label = inner
                             .next()
                             .expect("Expected label identifier")
                             .as_str()
                             .to_string();
-                        log::trace!("Label: {:?}", label);
+                        let source = inner.as_str().trim().to_string();
+                        log::trace!("Label: {:?}, source: {}", label, source.clone().yellow());
                         if current_section == Some(Section::Data) {
                             if let Some(inner_directive) = inner.next() {
                                 let directive = inner_directive.as_str().trim();
@@ -94,7 +91,7 @@ pub fn parse(input: &str) -> Option<Program> {
                                         data.push(0); // null-terminated string
                                         log::trace!(".asciiz {:?}", &data);
                                         RawData {
-                                            offset,
+                                            address,
                                             source,
                                             data,
                                         }
@@ -106,7 +103,7 @@ pub fn parse(input: &str) -> Option<Program> {
                                         let data = data[1..data.len() - 1].to_vec();
                                         log::trace!(".ascii {:?}", &data);
                                         RawData {
-                                            offset,
+                                            address,
                                             source,
                                             data,
                                         }
@@ -116,7 +113,7 @@ pub fn parse(input: &str) -> Option<Program> {
                                             inner.next().unwrap().as_str().parse().unwrap();
                                         log::trace!(".word {:?}", word);
                                         RawData {
-                                            offset,
+                                            address,
                                             source,
                                             data: word.to_le_bytes().to_vec(),
                                         }
@@ -126,15 +123,14 @@ pub fn parse(input: &str) -> Option<Program> {
                                             inner.next().unwrap().as_str().parse().unwrap();
                                         log::trace!(".byte {:?}", byte);
                                         RawData {
-                                            offset,
+                                            address,
                                             source,
                                             data: vec![byte],
                                         }
                                     }
                                     _ => unreachable!(),
                                 };
-                                offset += data.size() as Offset;
-                                log::trace!("  - Directive: {:?} with data: {:?}", directive, data);
+                                address += data.size() as Address;
                                 prog.data.globals.insert(label, data);
                             } else {
                                 unreachable!();
@@ -145,7 +141,7 @@ pub fn parse(input: &str) -> Option<Program> {
                                 prog.text.blocks.push(previous_block);
                             }
                             current_block = Some(Block {
-                                offset,
+                                address,
                                 label,
                                 instructions: Vec::new(),
                             });
@@ -176,8 +172,12 @@ pub fn parse(input: &str) -> Option<Program> {
                         let Some(block) = current_block.as_mut() else {
                             unreachable!();
                         };
-                        let instr = Instruction { offset, kind, args };
-                        offset += instr.size() as Offset;
+                        let instr = Instruction {
+                            address,
+                            kind,
+                            args,
+                        };
+                        address += instr.size() as Address;
                         block.instructions.push(instr);
                     }
                     Rule::EOI => {}

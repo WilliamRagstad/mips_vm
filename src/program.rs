@@ -1,6 +1,8 @@
+use colorful::{Color, Colorful};
 use std::collections::HashMap;
 
-pub type Offset = u32;
+pub type Address = u32;
+pub type Word = u32;
 
 #[derive(Debug, PartialEq)]
 pub enum Section {
@@ -15,12 +17,19 @@ impl Section {
             Section::Text => ".text",
         }
     }
+
+    pub fn show_color(&self) -> String {
+        match self {
+            Section::Data => ".data".color(Color::HotPink2).to_string(),
+            Section::Text => ".text".color(Color::HotPink2).to_string(),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
 pub struct RawData {
     pub source: String,
-    pub offset: Offset,
+    pub address: Address,
     pub data: Vec<u8>,
 }
 
@@ -28,11 +37,24 @@ impl RawData {
     pub fn show(&self) -> String {
         self.source.clone()
     }
+
+    pub fn show_color(&self) -> String {
+        let mut result = String::new();
+        result.push_str(&format!("{}\n", self.source.clone().yellow()));
+        // Actual data in comment # ... in gray
+        result.push_str(&"# ".dark_gray().to_string());
+        for byte in &self.data {
+            result.push_str(&format!("{:02x} ", byte).dark_gray().to_string());
+        }
+        result
+    }
+
     pub fn size(&self) -> usize {
         self.data.len()
     }
-    pub fn address(&self) -> Offset {
-        self.offset
+
+    pub fn address(&self) -> Address {
+        self.address
     }
 }
 
@@ -49,7 +71,20 @@ impl DataSection {
         }
         result
     }
-    pub fn find_by_address(&self, address: Offset) -> Option<&RawData> {
+
+    pub fn show_color(&self) -> String {
+        let mut result = String::new();
+        for (label, directive) in &self.globals {
+            result.push_str(&format!(
+                "{}: {}\n",
+                label.clone().light_green(),
+                directive.show_color()
+            ));
+        }
+        result
+    }
+
+    pub fn find_by_address(&self, address: Address) -> Option<&RawData> {
         self.globals
             .values()
             .find(|&directive| directive.address() == address)
@@ -277,11 +312,19 @@ impl InstructionArg {
             InstructionArg::Label(l) => l.to_string(),
         }
     }
+
+    pub fn show_color(&self) -> String {
+        match self {
+            InstructionArg::Register(r) => r.show().color(Color::Orange1).to_string(),
+            InstructionArg::Immediate(i) => i.to_string().magenta().to_string(),
+            InstructionArg::Label(l) => l.to_string().light_green().to_string(),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
 pub struct Instruction {
-    pub offset: Offset,
+    pub address: Address,
     pub kind: InstructionKind,
     pub args: Vec<InstructionArg>,
 }
@@ -300,6 +343,19 @@ impl Instruction {
         result
     }
 
+    pub fn show_color(&self) -> String {
+        let mut result = self.kind.show().light_cyan().to_string();
+        for (i, arg) in self.args.iter().enumerate() {
+            if i == 0 {
+                result.push(' ');
+            } else {
+                result.push_str(", ");
+            }
+            result.push_str(&arg.show_color());
+        }
+        result
+    }
+
     pub fn size(&self) -> usize {
         4
     }
@@ -307,7 +363,7 @@ impl Instruction {
 
 #[derive(Debug, PartialEq)]
 pub struct Block {
-    pub offset: Offset,
+    pub address: Address,
     pub label: String,
     pub instructions: Vec<Instruction>,
 }
@@ -317,6 +373,14 @@ impl Block {
         let mut result = format!("{}:\n", self.label);
         for instruction in &self.instructions {
             result.push_str(&format!("    {}\n", instruction.show()));
+        }
+        result
+    }
+
+    pub fn show_color(&self) -> String {
+        let mut result = format!("{}:\n", self.label.clone().light_green());
+        for instruction in &self.instructions {
+            result.push_str(&format!("    {}\n", instruction.show_color()));
         }
         result
     }
@@ -339,6 +403,21 @@ impl TextSection {
         }
         result
     }
+
+    pub fn show_color(&self) -> String {
+        let mut result = String::new();
+        for label in &self.global_labels {
+            result.push_str(&format!(
+                "{} {}\n",
+                ".global".color(Color::HotPink2),
+                label.clone().light_green()
+            ));
+        }
+        for block in &self.blocks {
+            result.push_str(&block.show_color());
+        }
+        result
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -355,6 +434,16 @@ impl Program {
         // Text
         result.push_str(&format!("\n{}\n", Section::Text.show()));
         result.push_str(&self.text.show());
+        result
+    }
+
+    pub fn show_color(&self) -> String {
+        // Data
+        let mut result = format!("{}\n", Section::Data.show_color());
+        result.push_str(&self.data.show_color());
+        // Text
+        result.push_str(&format!("\n{}\n", Section::Text.show_color()));
+        result.push_str(&self.text.show_color());
         result
     }
 }
