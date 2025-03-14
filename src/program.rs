@@ -594,11 +594,14 @@ impl TextSection {
     }
 
     pub fn entry_block(&self) -> Option<&Block> {
-        self.blocks.iter().find(|block| {
-            block.label.contains("main")
-                || block.label.contains("entry")
-                || block.label.contains("start")
-        })
+        self.blocks
+            .iter()
+            .find(|block| {
+                block.label.contains("main")
+                    || block.label.contains("entry")
+                    || block.label.contains("start")
+            })
+            .or(self.blocks.first())
     }
 
     pub fn show(&self) -> String {
