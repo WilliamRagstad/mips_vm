@@ -200,11 +200,12 @@ fn load_word(arg: &InstructionArg, registers: &Registers, memory: &Memory) -> Wo
         InstructionArg::RegisterOffset(register, offset) => {
             let base = registers.get(register);
             let address = base + offset;
-            let data: [u8; size_of::<Word>()] = memory.read_const(address).unwrap();
+            let data: [u8; size_of::<Word>()] =
+                memory.read_const(address).expect("Invalid address");
             Word::from_le_bytes(data)
         }
         InstructionArg::Label(label) => {
-            let address = memory.address_of_label(label).unwrap();
+            let address = memory.address_of_label(label).expect("Label not found");
             let data: [u8; size_of::<Word>()] = memory.read_const(address).unwrap();
             Word::from_le_bytes(data)
         }
