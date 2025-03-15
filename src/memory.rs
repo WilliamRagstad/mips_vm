@@ -399,13 +399,26 @@ impl Memory {
         self.write(address, &(vec![0; size]));
     }
 
-    pub fn dump(&self, buf: &mut [u8]) -> usize {
+    pub fn dump(&self) -> Vec<u8> {
+        let mut buf = Vec::new();
         let mut offset = 0;
         for section in self.sections.values() {
             let data = section.read();
+            if buf.len() < offset + data.len() {
+                buf.resize(offset + data.len(), 0);
+            }
+
             buf[offset..offset + data.len()].copy_from_slice(data);
             offset += data.len();
         }
-        offset
+        // Fill in text section with 0xFF
+        let text_end = self.text.end_address as usize;
+        let text_start = self.text.start_address as usize;
+        let text_size = text_end - text_start + 1;
+        if buf.len() < text_end + text_size {
+            buf.resize(text_end + text_size, 0);
+        }
+        buf[text_end..text_end + text_size].fill(0xFF);
+        buf
     }
 }
