@@ -14,7 +14,7 @@ echo:
 	j echo
 
 Read:
-	lui $t0, 0xffff
+	lui $t0, 0xffff # MMIO base address
 Loop1:
 	lw $t1, 0($t0) # control
 	andi $t1, $t1, 0x0001
