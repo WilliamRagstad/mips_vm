@@ -11,6 +11,14 @@ pub type Word = u32;
 /// Represents a 16 bits literal immediate value in a MIPS program.
 pub type Immediate = u16;
 
+const DIRECTIVE_COLOR: Color = Color::LightRed;
+const LABEL_COLOR: Color = Color::LightGreen;
+const REGISTER_COLOR: Color = Color::Orange1;
+const IMMEDIATE_COLOR: Color = Color::Magenta;
+const INSTRUCTION_COLOR: Color = Color::LightCyan;
+const DATA_SOURCE_COLOR: Color = Color::Yellow;
+const DATA_BYTES_COLOR: Color = Color::DarkGray;
+
 /// Represents the different sections of a MIPS program.
 #[derive(Debug, PartialEq)]
 pub enum Section {
@@ -30,8 +38,8 @@ impl Section {
 
     pub fn show_color(&self) -> String {
         match self {
-            Section::Data => ".data".color(Color::HotPink2).to_string(),
-            Section::Text => ".text".color(Color::HotPink2).to_string(),
+            Section::Data => ".data".color(DIRECTIVE_COLOR).to_string(),
+            Section::Text => ".text".color(DIRECTIVE_COLOR).to_string(),
         }
     }
 }
@@ -54,11 +62,14 @@ impl RawData {
 
     pub fn show_color(&self) -> String {
         let mut result = String::new();
-        result.push_str(&format!("{}\n", self.source.clone().yellow()));
+        result.push_str(&format!(
+            "{}\n",
+            self.source.clone().color(DATA_SOURCE_COLOR)
+        ));
         // Actual data in comment # ... in gray
-        result.push_str(&"# ".dark_gray().to_string());
+        result.push_str(&"# ".color(DATA_BYTES_COLOR).to_string());
         for byte in &self.data {
-            result.push_str(&format!("{:02x} ", byte).dark_gray().to_string());
+            result.push_str(&format!("{:02x} ", byte).color(DATA_BYTES_COLOR).to_string());
         }
         result
     }
@@ -80,6 +91,10 @@ pub struct DataSection {
 }
 
 impl DataSection {
+    pub fn empty(&self) -> bool {
+        self.globals.is_empty()
+    }
+
     pub fn address_of_label(&self, label: &str) -> Option<Address> {
         self.globals.get(label).map(|data| data.address)
     }
@@ -97,7 +112,7 @@ impl DataSection {
         for (label, directive) in &self.globals {
             result.push_str(&format!(
                 "{}: {}\n",
-                label.clone().light_green(),
+                label.clone().color(LABEL_COLOR),
                 directive.show_color()
             ));
         }
@@ -108,6 +123,12 @@ impl DataSection {
         self.globals
             .values()
             .find(|&directive| directive.address() == address)
+    }
+
+    pub fn find_mut_by_address(&mut self, address: Address) -> Option<&mut RawData> {
+        self.globals
+            .values_mut()
+            .find(|directive| directive.address() == address)
     }
 }
 
@@ -223,6 +244,7 @@ pub enum InstructionKind {
     /// Description: `Memory[$s + offset] = $t`
     Sw,
     /// Load an immediate value into a register.
+    /// Use this when you want to put an integer value into a register.
     ///
     /// Syntax: `li $t, immediate`
     ///
@@ -234,17 +256,14 @@ pub enum InstructionKind {
     ///
     /// Description: `$t = immediate << 16`
     Lui,
-    /// Move a value from one register to another.
-    ///
-    /// Syntax: `move $d, $s`
-    ///
-    /// Description: `$d = $s`
-    Move,
     /// Load the address of a label into a register.
+    /// Use this when you want to put an address value into a register.
     ///
     /// Syntax: `la $t, label`
     ///
     /// Description: `$t = address of label`
+    ///
+    /// Where `label` is pre-defined for something in memory (defined under the `.data` directive).
     La,
     /// Unconditional branch to a label.
     ///
@@ -270,6 +289,18 @@ pub enum InstructionKind {
     ///
     /// Description: `$ra = PC + 4; jump to address of label`
     Jal,
+    /// Move a value from one register to another.
+    ///
+    /// Syntax: `move $d, $s`
+    ///
+    /// Description: `$d = $s`
+    Move,
+    /// Do nothing.
+    ///
+    /// Syntax: `nop`
+    ///
+    /// Description: `do nothing`
+    Nop,
     /// Perform a system call.
     ///
     /// Syntax: `syscall`
@@ -307,6 +338,7 @@ impl InstructionKind {
             InstructionKind::B => "b",
             InstructionKind::J => "j",
             InstructionKind::Jal => "jal",
+            InstructionKind::Nop => "nop",
             InstructionKind::Syscall => "syscall",
         }
     }
@@ -341,6 +373,7 @@ impl From<&str> for InstructionKind {
             "b" => InstructionKind::B,
             "j" => InstructionKind::J,
             "jal" => InstructionKind::Jal,
+            "nop" => InstructionKind::Nop,
             "syscall" => InstructionKind::Syscall,
             _ => panic!("Invalid instruction: {}", s),
         }
@@ -488,14 +521,16 @@ impl InstructionArg {
 
     pub fn show_color(&self) -> String {
         match self {
-            InstructionArg::Register(r) => r.show().color(Color::Orange1).to_string(),
-            InstructionArg::Immediate(i) => i.to_string().magenta().to_string(),
-            InstructionArg::RegisterOffset(r, offset) => {
-                format!("{}({})", offset.to_string().magenta(), r.show())
-                    .color(Color::Orange1)
-                    .to_string()
-            }
-            InstructionArg::Label(l) => l.to_string().light_green().to_string(),
+            InstructionArg::Register(r) => r.show().color(REGISTER_COLOR).to_string(),
+            InstructionArg::Immediate(i) => i.to_string().color(IMMEDIATE_COLOR).to_string(),
+            InstructionArg::RegisterOffset(r, offset) => format!(
+                "{}({})",
+                offset.to_string().color(IMMEDIATE_COLOR),
+                r.show()
+            )
+            .color(REGISTER_COLOR)
+            .to_string(),
+            InstructionArg::Label(l) => l.to_string().color(LABEL_COLOR).to_string(),
         }
     }
 }
@@ -526,7 +561,7 @@ impl Instruction {
     }
 
     pub fn show_color(&self) -> String {
-        let mut result = self.kind.show().light_cyan().to_string();
+        let mut result = self.kind.show().color(INSTRUCTION_COLOR).to_string();
         for (i, arg) in self.args.iter().enumerate() {
             if i == 0 {
                 result.push(' ');
@@ -556,7 +591,11 @@ pub struct Block {
 
 impl Block {
     pub fn show(&self) -> String {
-        let mut result = format!("{}:\n", self.label);
+        let mut result = if self.label.is_empty() {
+            String::new()
+        } else {
+            format!("{}:\n", self.label)
+        };
         for instruction in &self.instructions {
             result.push_str(&format!("    {}\n", instruction.show()));
         }
@@ -564,7 +603,11 @@ impl Block {
     }
 
     pub fn show_color(&self) -> String {
-        let mut result = format!("{}:\n", self.label.clone().light_green());
+        let mut result = if self.label.is_empty() {
+            String::new()
+        } else {
+            format!("{}:\n", self.label.clone().color(LABEL_COLOR))
+        };
         for instruction in &self.instructions {
             result.push_str(&format!("    {}\n", instruction.show_color()));
         }
@@ -582,6 +625,10 @@ pub struct TextSection {
 }
 
 impl TextSection {
+    pub fn empty(&self) -> bool {
+        self.blocks.is_empty()
+    }
+
     pub fn find_block_by_address(&self, address: Address) -> Option<&Block> {
         self.blocks.iter().find(|block| block.address == address)
     }
@@ -631,8 +678,8 @@ impl TextSection {
         for label in &self.global_labels {
             result.push_str(&format!(
                 "{} {}\n",
-                ".global".color(Color::HotPink2),
-                label.clone().light_green()
+                ".global".color(DIRECTIVE_COLOR),
+                label.clone().color(LABEL_COLOR)
             ));
         }
         for block in &self.blocks {
@@ -661,22 +708,35 @@ impl Program {
     }
 
     pub fn show(&self) -> String {
+        let mut result = String::new();
         // Data
-        let mut result = format!("{}\n", Section::Data.show());
-        result.push_str(&self.data.show());
+        if !self.data.empty() {
+            result.push_str(&format!("{}\n", Section::Data.show()));
+            result.push_str(&self.data.show());
+        }
         // Text
-        result.push_str(&format!("\n{}\n", Section::Text.show()));
-        result.push_str(&self.text.show());
+        if !self.text.empty() {
+            result.push_str(&format!("\n{}\n", Section::Text.show()));
+            result.push_str(&self.text.show());
+        }
         result
     }
 
     pub fn show_color(&self) -> String {
+        let mut result = String::new();
         // Data
-        let mut result = format!("{}\n", Section::Data.show_color());
-        result.push_str(&self.data.show_color());
+        if !self.data.empty() {
+            result.push_str(&format!("{}\n", Section::Data.show_color()));
+            result.push_str(&self.data.show_color());
+        }
+        if !self.data.empty() && !self.text.empty() {
+            result.push('\n'); // Add a newline between sections
+        }
         // Text
-        result.push_str(&format!("\n{}\n", Section::Text.show_color()));
-        result.push_str(&self.text.show_color());
+        if !self.text.empty() {
+            result.push_str(&format!("{}\n", Section::Text.show_color()));
+            result.push_str(&self.text.show_color());
+        }
         result
     }
 }
