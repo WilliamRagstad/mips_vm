@@ -121,7 +121,13 @@ impl DataSection {
 
     pub fn show_color(&self) -> String {
         let mut result = String::new();
-        for (label, directive) in &self.globals {
+        let mut pairs = self
+            .globals
+            .keys()
+            .map(|l| (l.clone(), self.globals.get(l).unwrap()))
+            .collect::<Vec<_>>();
+        pairs.sort_by_key(|(_, directive)| directive.address());
+        for (label, directive) in pairs {
             result.push_str(&format!(
                 "{}: {}\n",
                 label.clone().color(LABEL_COLOR),
