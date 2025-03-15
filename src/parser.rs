@@ -91,8 +91,8 @@ pub fn parse(input: &str) -> Option<Program> {
                                 let directive = inner_directive.as_str().trim();
                                 let data = match directive {
                                     ".asciiz" => {
-                                        let data =
-                                            inner.next().unwrap().as_str().to_string().into_bytes();
+                                        let str = unescape_string(inner.next().unwrap().as_str());
+                                        let data = str.into_bytes();
                                         // remove first and last character (")
                                         let mut data = data[1..data.len() - 1].to_vec();
                                         data.push(0); // null-terminated string
@@ -104,8 +104,8 @@ pub fn parse(input: &str) -> Option<Program> {
                                         }
                                     }
                                     ".ascii" => {
-                                        let data =
-                                            inner.next().unwrap().as_str().to_string().into_bytes();
+                                        let str = unescape_string(inner.next().unwrap().as_str());
+                                        let data = str.into_bytes();
                                         // remove first and last character (")
                                         let data = data[1..data.len() - 1].to_vec();
                                         log::trace!(".ascii {:?}", &data);
@@ -222,6 +222,28 @@ fn parse_imm(arg: pest::iterators::Pair<Rule>) -> i32 {
     } else {
         arg.parse().unwrap()
     }
+}
+
+fn unescape_string(s: &str) -> String {
+    let mut result = String::new();
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next() {
+                Some('n') => result.push('\n'),
+                Some('t') => result.push('\t'),
+                Some('r') => result.push('\r'),
+                Some('\\') => result.push('\\'),
+                Some('"') => result.push('"'),
+                Some('0') => result.push('\0'),
+                Some(c) => result.push(c),
+                None => result.push('\\'),
+            }
+        } else {
+            result.push(c);
+        }
+    }
+    result
 }
 
 #[cfg(test)]
