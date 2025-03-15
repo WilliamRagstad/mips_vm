@@ -8,6 +8,9 @@ pub type Address = u32;
 /// Represents a 32 bits long word in a MIPS program.
 pub type Word = u32;
 
+/// Represents a 16 bits literal immediate value in a MIPS program.
+pub type Immediate = u16;
+
 /// Represents the different sections of a MIPS program.
 #[derive(Debug, PartialEq)]
 pub enum Section {
