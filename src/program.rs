@@ -518,9 +518,9 @@ pub enum InstructionArg {
     /// A register argument.
     Register(Register),
     /// An immediate value argument.
-    Immediate(i32),
+    Immediate(Immediate),
     /// Register offset argument.
-    RegisterOffset(Register, Word),
+    RegisterOffset(Register, Immediate),
     /// A label argument.
     Label(String),
 }

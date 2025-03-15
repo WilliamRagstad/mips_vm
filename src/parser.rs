@@ -5,8 +5,8 @@ use pest::Parser;
 use pest_derive::Parser;
 
 use crate::program::{
-    Address, Block, DataSection, Instruction, InstructionArg, InstructionKind, Program, RawData,
-    Register, Section, TextSection, Word,
+    Address, Block, DataSection, Immediate, Instruction, InstructionArg, InstructionKind, Program,
+    RawData, Register, Section, TextSection,
 };
 
 #[derive(Parser)]
@@ -170,7 +170,7 @@ pub fn parse(input: &str) -> Option<Program> {
                                     let register = Register::from(inner.next().unwrap().as_str());
                                     args.push(InstructionArg::RegisterOffset(
                                         register,
-                                        parse_imm(immediate) as Word,
+                                        parse_imm(immediate),
                                     ));
                                 }
                                 Rule::immediate => {
@@ -213,12 +213,12 @@ pub fn parse(input: &str) -> Option<Program> {
 // integer    = @{ (ASCII_DIGIT)+ }
 // hex        = @{ "0x" ~ (ASCII_HEX_DIGIT)+ }
 // binary     = @{ "0b" ~ ("0" | "1")+ }``
-fn parse_imm(arg: pest::iterators::Pair<Rule>) -> i32 {
+fn parse_imm(arg: pest::iterators::Pair<Rule>) -> Immediate {
     let arg = arg.as_str();
     if let Some(hex) = arg.strip_prefix("0x") {
-        i32::from_str_radix(hex, 16).unwrap()
+        Immediate::from_str_radix(hex, 16).unwrap()
     } else if let Some(bin) = arg.strip_prefix("0b") {
-        i32::from_str_radix(bin, 2).unwrap()
+        Immediate::from_str_radix(bin, 2).unwrap()
     } else {
         arg.parse().unwrap()
     }
