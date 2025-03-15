@@ -11,13 +11,13 @@ pub type Word = u32;
 /// Represents a 16 bits literal immediate value in a MIPS program.
 pub type Immediate = u16;
 
-const DIRECTIVE_COLOR: Color = Color::LightRed;
-const LABEL_COLOR: Color = Color::LightGreen;
-const REGISTER_COLOR: Color = Color::Orange1;
-const IMMEDIATE_COLOR: Color = Color::Magenta;
-const INSTRUCTION_COLOR: Color = Color::LightCyan;
-const DATA_SOURCE_COLOR: Color = Color::Yellow;
-const DATA_BYTES_COLOR: Color = Color::DarkGray;
+pub const DIRECTIVE_COLOR: Color = Color::LightRed;
+pub const LABEL_COLOR: Color = Color::LightGreen;
+pub const REGISTER_COLOR: Color = Color::Orange1;
+pub const IMMEDIATE_COLOR: Color = Color::Magenta;
+pub const INSTRUCTION_COLOR: Color = Color::LightCyan;
+pub const DATA_SOURCE_COLOR: Color = Color::Yellow;
+pub const DATA_BYTES_COLOR: Color = Color::DarkGray;
 
 /// Represents the different sections of a MIPS program.
 #[derive(Debug, PartialEq)]
@@ -45,7 +45,7 @@ impl Section {
 }
 
 /// Represents raw data in the data section.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct RawData {
     /// The source code of the data directive.
     pub source: String,
@@ -95,6 +95,18 @@ impl DataSection {
         self.globals.is_empty()
     }
 
+    pub fn data(&self) -> Vec<&RawData> {
+        let mut data: Vec<&RawData> = self.globals.values().collect();
+        data.sort_by_key(|data| data.address);
+        data
+    }
+
+    pub fn data_move(self) -> Vec<RawData> {
+        let mut data: Vec<RawData> = self.globals.into_values().collect();
+        data.sort_by_key(|data| data.address);
+        data
+    }
+
     pub fn address_of_label(&self, label: &str) -> Option<Address> {
         self.globals.get(label).map(|data| data.address)
     }
@@ -133,7 +145,7 @@ impl DataSection {
 }
 
 /// Represents the different kinds of MIPS instructions.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum InstructionKind {
     /// Add two registers and store the result in a register.
     ///
@@ -454,6 +466,10 @@ impl Register {
             Register::Ra => "$ra",
         }
     }
+
+    pub fn show_color(&self) -> String {
+        self.show().color(REGISTER_COLOR).to_string()
+    }
 }
 
 impl From<&str> for Register {
@@ -497,7 +513,7 @@ impl From<&str> for Register {
 }
 
 /// Represents an argument to a MIPS instruction.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum InstructionArg {
     /// A register argument.
     Register(Register),
@@ -526,7 +542,7 @@ impl InstructionArg {
             InstructionArg::RegisterOffset(r, offset) => format!(
                 "{}({})",
                 offset.to_string().color(IMMEDIATE_COLOR),
-                r.show()
+                r.show_color()
             )
             .color(REGISTER_COLOR)
             .to_string(),
@@ -536,7 +552,7 @@ impl InstructionArg {
 }
 
 /// Represents a MIPS instruction.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Instruction {
     /// The address of the instruction.
     pub address: Address,
@@ -573,7 +589,7 @@ impl Instruction {
         result
     }
 
-    pub fn size(&self) -> usize {
+    pub fn size() -> usize {
         4
     }
 }
@@ -627,6 +643,20 @@ pub struct TextSection {
 impl TextSection {
     pub fn empty(&self) -> bool {
         self.blocks.is_empty()
+    }
+
+    pub fn instructions(&self) -> Vec<&Instruction> {
+        self.blocks
+            .iter()
+            .flat_map(|block| block.instructions.iter())
+            .collect()
+    }
+
+    pub fn instructions_move(self) -> Vec<Instruction> {
+        self.blocks
+            .into_iter()
+            .flat_map(|block| block.instructions.into_iter())
+            .collect()
     }
 
     pub fn find_block_by_address(&self, address: Address) -> Option<&Block> {

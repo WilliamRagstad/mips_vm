@@ -190,7 +190,7 @@ pub fn parse(input: &str) -> Option<Program> {
                             kind,
                             args,
                         };
-                        address += instr.size() as Address;
+                        address += Instruction::size() as Address;
                         current_block.instructions.push(instr);
                     }
                     Rule::EOI => {}

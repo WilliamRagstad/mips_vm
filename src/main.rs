@@ -2,8 +2,10 @@ use interpreter::execute;
 use parser::parse;
 
 pub mod interpreter;
+pub mod memory;
 pub mod parser;
 pub mod program;
+pub mod registers;
 
 fn main() {
     env_logger::init();
