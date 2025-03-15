@@ -117,6 +117,12 @@ pub enum InstructionKind {
     ///
     /// Description: `$d = $s + $t`
     Add,
+    /// Add an immediate value to a register and store the result in a register.
+    ///
+    /// Syntax: `addi $d, $s, immediate`
+    ///
+    /// Description: `$d = $s + immediate`
+    Addi,
     /// Subtract one register from another and store the result in a register.
     ///
     /// Syntax: `sub $d, $s, $t`
@@ -273,6 +279,7 @@ impl InstructionKind {
     pub fn show(&self) -> &str {
         match self {
             InstructionKind::Add => "add",
+            InstructionKind::Addi => "addi",
             InstructionKind::Sub => "sub",
             InstructionKind::Mul => "mul",
             InstructionKind::Div => "div",
@@ -306,6 +313,7 @@ impl From<&str> for InstructionKind {
     fn from(s: &str) -> InstructionKind {
         match s {
             "add" => InstructionKind::Add,
+            "addi" => InstructionKind::Addi,
             "sub" => InstructionKind::Sub,
             "mul" => InstructionKind::Mul,
             "div" => InstructionKind::Div,
