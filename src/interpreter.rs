@@ -30,7 +30,7 @@ pub fn execute(program: Program, entrypoint: Address) {
 
     'execution: loop {
         if let Some(new_block) = memory.label_at_address(pc) {
-            log::trace!(
+            log::debug!(
                 "Executing block at 0x{:08x} {}...",
                 pc,
                 new_block.clone().color(LABEL_COLOR)
@@ -39,7 +39,7 @@ pub fn execute(program: Program, entrypoint: Address) {
         let instruction = memory
             .execute(pc)
             .unwrap_or_else(|| panic!("No instruction found at address 0x{:08x}", pc));
-        log::trace!(
+        log::debug!(
             "Executing instruction at 0x{:08x}: {}",
             pc,
             instruction.show_color()
@@ -114,7 +114,7 @@ pub fn execute(program: Program, entrypoint: Address) {
             }
             InstructionKind::Jr => {
                 let address = load_address(&instruction.args[0], &registers, &memory);
-                log::trace!("Jumping to address {}", address);
+                log::debug!("Jumping to address {}", address);
             }
             InstructionKind::Syscall => {
                 if !syscall(&mut registers, &mut memory) {
@@ -196,7 +196,7 @@ pub fn execute(program: Program, entrypoint: Address) {
             }
         }
     }
-    log::trace!("{}", "====== Done ======".blue());
+    log::debug!("{}", "====== Done ======".blue());
 }
 
 fn load_word(arg: &InstructionArg, registers: &Registers, memory: &Memory) -> Word {
@@ -385,7 +385,7 @@ fn syscall(registers: &mut Registers, memory: &mut Memory) -> bool {
             registers.set(&Register::V0, address as Word);
         }
         Syscall::Exit | Syscall::Exit2 => {
-            log::trace!("Exiting program...");
+            log::debug!("Exiting program...");
             // std::process::exit(0);
             return false;
         }
