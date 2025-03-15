@@ -108,6 +108,7 @@ impl From<&str> for Register {
     fn from(s: &str) -> Register {
         match s {
             "$zero" => Register::Zero,
+            "$0" => Register::Zero,
             "$at" => Register::At,
             "$v0" => Register::V0,
             "$v1" => Register::V1,

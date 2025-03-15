@@ -55,6 +55,7 @@ arg  = _{ (register | offset | immediate | string | identifier) }
 
 register   = @{
     "$zero"
+  | "$0"
   | "$at"
   | "$v0"
   | "$v1"
