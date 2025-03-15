@@ -4,9 +4,12 @@ use colorful::Colorful;
 use pest::Parser;
 use pest_derive::Parser;
 
-use crate::program::{
-    Address, Block, DataSection, Immediate, Instruction, InstructionArg, InstructionKind, Program,
-    RawData, Register, Section, TextSection,
+use crate::{
+    program::{
+        Address, Block, DataSection, Immediate, Instruction, InstructionArg, InstructionKind,
+        Program, RawData, Section, TextSection,
+    },
+    registers::Register,
 };
 
 #[derive(Parser)]

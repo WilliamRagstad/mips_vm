@@ -2,10 +2,8 @@ use colorful::Colorful;
 
 use crate::{
     memory::Memory,
-    program::{
-        Address, Instruction, InstructionArg, InstructionKind, Program, Register, Word, LABEL_COLOR,
-    },
-    registers::Registers,
+    program::{Address, Instruction, InstructionArg, InstructionKind, Program, Word, LABEL_COLOR},
+    registers::{Register, Registers},
 };
 
 pub fn execute(program: Program, entrypoint: Address) {
