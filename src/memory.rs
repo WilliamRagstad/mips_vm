@@ -130,7 +130,7 @@ impl Memory {
             data: program.text.instructions_move(),
         };
 
-        let data = if program.data.data().is_empty() {
+        let data = if !program.data.empty() {
             let data = MemorySection {
                 protection: ProtectionLevel::ReadWrite,
                 start_address: program
