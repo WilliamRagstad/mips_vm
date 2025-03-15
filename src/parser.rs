@@ -39,7 +39,14 @@ pub fn parse(input: &str) -> Option<Program> {
             };
             let mut address: Address = 0;
             let mut current_section: Option<Section> = None;
-            let mut current_block: Option<Block> = None;
+
+            // Unnamed initial block
+            let mut current_block: Block = Block {
+                address,
+                label: String::new(),
+                instructions: Vec::new(),
+            };
+
             for pair in pairs {
                 match pair.as_rule() {
                     Rule::directive => {
@@ -136,15 +143,13 @@ pub fn parse(input: &str) -> Option<Program> {
                                 unreachable!();
                             }
                         } else if current_section == Some(Section::Text) {
-                            if let Some(previous_block) = current_block.take() {
-                                log::trace!("Pushing block: {:?}", previous_block);
-                                prog.text.blocks.push(previous_block);
-                            }
-                            current_block = Some(Block {
+                            log::trace!("Pushing block: {:?}", current_block);
+                            prog.text.blocks.push(current_block);
+                            current_block = Block {
                                 address,
                                 label,
                                 instructions: Vec::new(),
-                            });
+                            };
                         } else {
                             unreachable!();
                         }
@@ -179,25 +184,22 @@ pub fn parse(input: &str) -> Option<Program> {
                         }
                         log::trace!("  - Kind: {:?}", kind);
                         log::trace!("  - Args: {:?}", args);
-                        let Some(block) = current_block.as_mut() else {
-                            unreachable!();
-                        };
+
                         let instr = Instruction {
                             address,
                             kind,
                             args,
                         };
                         address += instr.size() as Address;
-                        block.instructions.push(instr);
+                        current_block.instructions.push(instr);
                     }
                     Rule::EOI => {}
                     _ => unreachable!(),
                 }
             }
-            if let Some(previous_block) = current_block.take() {
-                log::trace!("Pushing final block: {:?}", previous_block);
-                prog.text.blocks.push(previous_block);
-            }
+            log::trace!("Pushing final block: {:?}", current_block);
+            prog.text.blocks.push(current_block);
+
             Some(prog)
         }
         Err(e) => {
