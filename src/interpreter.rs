@@ -24,7 +24,7 @@ impl Registers {
     }
 }
 
-pub fn execute(program: Program, entrypoint: Address) {
+pub fn execute(mut program: Program, entrypoint: Address) {
     log::debug!(
         "{}\n{}",
         "======= EXECUTE =======".blue(),
@@ -151,7 +151,86 @@ pub fn execute(program: Program, entrypoint: Address) {
                     break 'execution;
                 }
             }
-            _ => unimplemented!("Instruction not implemented: {:?}", instruction),
+            InstructionKind::Addi => {
+                let dest = match &instruction.args[0] {
+                    InstructionArg::Register(r) => r,
+                    _ => panic!("Invalid argument for ADDI instruction"),
+                };
+                let src = load_word(&instruction.args[1], &registers, &program.data);
+                let imm = load_word(&instruction.args[2], &registers, &program.data);
+                registers.set(dest, src + imm);
+            }
+            InstructionKind::Andi => {
+                let dest = match &instruction.args[0] {
+                    InstructionArg::Register(r) => r,
+                    _ => panic!("Invalid argument for ANDI instruction"),
+                };
+                let src = load_word(&instruction.args[1], &registers, &program.data);
+                let imm = load_word(&instruction.args[2], &registers, &program.data);
+                registers.set(dest, src & imm);
+            }
+            InstructionKind::Beq => {
+                let lhs = load_word(&instruction.args[0], &registers, &program.data);
+                let rhs = load_word(&instruction.args[1], &registers, &program.data);
+                let offset = load_word(&instruction.args[2], &registers, &program.data);
+                if lhs == rhs {
+                    pc += offset as Address;
+                }
+            }
+            InstructionKind::Bne => {
+                let lhs = load_word(&instruction.args[0], &registers, &program.data);
+                let rhs = load_word(&instruction.args[1], &registers, &program.data);
+                let offset = load_word(&instruction.args[2], &registers, &program.data);
+                if lhs != rhs {
+                    pc += offset as Address;
+                }
+            }
+            InstructionKind::Lw => {
+                let dest = match &instruction.args[0] {
+                    InstructionArg::Register(r) => r,
+                    _ => panic!("Invalid argument for LW instruction"),
+                };
+                let src = load_word(&instruction.args[1], &registers, &program.data);
+                let offset = load_word(&instruction.args[2], &registers, &program.data);
+                let address = src + offset;
+                let data = program.data.find_by_address(address as Address).unwrap();
+                let value = Word::from_le_bytes(data.data[0..4].try_into().unwrap());
+                registers.set(dest, value);
+            }
+            InstructionKind::Sw => {
+                let src = load_word(&instruction.args[0], &registers, &program.data);
+                let dest = load_word(&instruction.args[1], &registers, &program.data);
+                let offset = load_word(&instruction.args[2], &registers, &program.data);
+                let address = dest + offset;
+                let data = program
+                    .data
+                    .find_mut_by_address(address as Address)
+                    .unwrap();
+                let value = src.to_le_bytes();
+                data.data[0..4].copy_from_slice(&value);
+            }
+            InstructionKind::Lui => {
+                let dest = match &instruction.args[0] {
+                    InstructionArg::Register(r) => r,
+                    _ => panic!("Invalid argument for LUI instruction"),
+                };
+                let imm = load_word(&instruction.args[1], &registers, &program.data);
+                registers.set(dest, imm << 16);
+            }
+            InstructionKind::Nop => { /* Do nothing */ }
+            InstructionKind::B => {
+                let offset = load_word(&instruction.args[0], &registers, &program.data);
+                pc += offset as Address;
+            }
+            InstructionKind::J => {
+                let address = load_address(&instruction.args[0], &registers, &program);
+                pc = address;
+            }
+            InstructionKind::Jal => {
+                let address = load_address(&instruction.args[0], &registers, &program);
+                registers.set(&Register::Ra, pc + 4);
+                pc = address;
+            }
         }
 
         // Move to the next instruction
