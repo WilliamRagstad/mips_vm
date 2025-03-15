@@ -1,6 +1,6 @@
 # MIPS VM
 
-This is a simple MIPS virtual machine that can interpret MIPS assembly code.
+This is a simple MIPS32 (I) virtual machine interpreting assembly.
 
 ## Example Usage
 
