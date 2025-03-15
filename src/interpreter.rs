@@ -312,7 +312,10 @@ fn syscall(registers: &mut Registers, memory: &mut Memory) -> bool {
             let mut buffer = [0u8; 128];
             let mut i = 0;
             loop {
-                let bytes_read = memory.read_buf(addr, &mut buffer).unwrap();
+                let bytes_res = memory.read_buf(addr, &mut buffer);
+                let Some(bytes_read) = bytes_res else {
+                    panic!("Invalid address: 0x{:08x}", addr);
+                };
                 for &byte in &buffer[..bytes_read] {
                     if byte == 0 {
                         break;
