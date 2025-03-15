@@ -250,8 +250,10 @@ impl Memory {
     /// Currently, only the text section will be executable
     pub fn execute(&self, address: Address) -> Option<&Instruction> {
         if self.text.start_address <= address && address <= self.text.end_address {
-            let index = (address - self.text.start_address) as usize / Instruction::size();
-            return self.text.execute().get(index);
+            // TODO: Improve finding the instruction by address performance
+            // let index = (address - self.text.start_address) as usize / Instruction::size();
+            // return self.text.execute().get(index);
+            return self.text.execute().iter().find(|i| i.address == address);
         }
         None
     }
