@@ -535,7 +535,7 @@ impl InstructionArg {
     pub fn show(&self) -> String {
         match self {
             InstructionArg::Register(r) => r.show().to_string(),
-            InstructionArg::Immediate(i) => format!("0x{:04x}", i),
+            InstructionArg::Immediate(i) => format!("0x{:x}", i),
             InstructionArg::RegisterOffset(r, offset) => format!("{}({})", offset, r.show()),
             InstructionArg::Label(l) => l.to_string(),
         }
@@ -544,9 +544,7 @@ impl InstructionArg {
     pub fn show_color(&self) -> String {
         match self {
             InstructionArg::Register(r) => r.show().color(REGISTER_COLOR).to_string(),
-            InstructionArg::Immediate(i) => {
-                format!("0x{:04x}", i).color(IMMEDIATE_COLOR).to_string()
-            }
+            InstructionArg::Immediate(i) => format!("0x{:x}", i).color(IMMEDIATE_COLOR).to_string(),
             InstructionArg::RegisterOffset(r, offset) => format!(
                 "{}({})",
                 offset.to_string().color(IMMEDIATE_COLOR),
