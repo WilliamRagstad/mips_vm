@@ -11,7 +11,43 @@ section_directive = @{ ".data" | ".text" }
 data_directive    = @{ ".align" | ".asciiz" | ".ascii" | ".word" | ".byte" | ".space" }
 text_directive    = @{ ".global" | ".globl" }
 
-opcode = @{ "add" | "addi" | "addiu" | "addu" | "andi" | "and" | "beq" | "bne" | "jalr" | "jal" | "jr" | "j" | "lb" | "lbu" | "lui" | "lw" | "mul" | "nor" | "or" | "ori" | "slt" | "sltu" | "slti" | "sltiu" | "sll" | "sllv" | "sra" | "srl" | "srlv" | "sb" | "sw" | "sub" | "subu" | "xor" | "xori" }
+opcode = @{
+    "addi"
+  | "addiu"
+  | "addu"
+  | "add"
+  | "andi"
+  | "and"
+  | "beq"
+  | "bne"
+  | "jalr"
+  | "jal"
+  | "jr"
+  | "j"
+  | "lbu"
+  | "lb"
+  | "lui"
+  | "lw"
+  | "mul"
+  | "nor"
+  | "ori"
+  | "or"
+  | "sltu"
+  | "sltiu"
+  | "slti"
+  | "slt"
+  | "sllv"
+  | "sll"
+  | "sra"
+  | "srlv"
+  | "srl"
+  | "sb"
+  | "sw"
+  | "subu"
+  | "sub"
+  | "xori"
+  | "xor"
+}
 pseudo = @{ "la" | "li" | "ble" | "move" | "nop" | "syscall" }
 
 args = _{ (arg ~ ("," ~ arg)*) }
