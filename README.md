@@ -1,6 +1,8 @@
 # MIPS VM
 
-This is a simple MIPS32 (I) virtual machine interpreting assembly.
+A *simple and experimental* MIPS virtual machine, currently interpreting assembly.
+
+> MIPS (Microprocessor without Interlocked Pipelined Stages) is a family of reduced instruction set computer (RISC) instruction set architectures (ISA).<sup>[3](#references)</sup>
 
 ## Roadmap
 
@@ -78,15 +80,15 @@ Hello, world!
 
 ## References
 
-- [MIPS IV Instruction Set - Charles Price](https://www.cs.cmu.edu/afs/cs/academic/class/15740-f97/public/doc/mips-isa.pdf)
-- [MIPS32 Architecture For Programmers Volume II-A: The MIPS32 Instruction Set](https://s3-eu-west-1.amazonaws.com/downloads-mips/documents/MD00086-2B-MIPS32BIS-AFP-06.03.pdf)
-- [MIPS Architecture - Wikipedia](https://en.wikipedia.org/wiki/MIPS_architecture)
-- [MIPS Assembly Language - Wikibooks](https://en.wikibooks.org/wiki/MIPS_Assembly)
-- [MARS - Mips Assembly and Runtime Simulator Help](https://dpetersanderson.github.io/Help/MarsHelpIntro.html)
-- [MIPS Reference Sheet - David Broman, KTH](https://www.kth.se/social/files/563c63c9f276547044e8695f/mips-ref-sheet.pdf)
-- [MIPS Instruction Set - Andrea Gasparetto](https://www.dsi.unive.it/~gasparetto/materials/MIPS_Instruction_Set.pdf)
-- [MIPS Architecture and Assembly Language Overview](https://minnie.tuhs.org/CompArch/Resources/mips_quick_tutorial.html)
-- [Accessing Memory in MIPS - Ziad Matni](https://ucsb-cs64.github.io/w20/lectures/lect07.pdf)
-- [MARS Memory-Mapped Input/Output](https://wilkinsonj.people.charleston.edu/mmio.html)
-- [Introduction to exceptions and interrupts in Mips](https://www2.it.uu.se/edu/course/homepage/os/vt20/module-1/assignment/)
-- [Input / Output (I/O) - Michael Langer](https://www.cim.mcgill.ca/~langer/273/20-slides.pdf)
+1. [MIPS IV Instruction Set - Charles Price](https://www.cs.cmu.edu/afs/cs/academic/class/15740-f97/public/doc/mips-isa.pdf)
+2. [MIPS32 Architecture For Programmers Volume II-A: The MIPS32 Instruction Set](https://s3-eu-west-1.amazonaws.com/downloads-mips/documents/MD00086-2B-MIPS32BIS-AFP-06.03.pdf)
+3. [MIPS Architecture - Wikipedia](https://en.wikipedia.org/wiki/MIPS_architecture)
+4. [MIPS Assembly Language - Wikibooks](https://en.wikibooks.org/wiki/MIPS_Assembly)
+5. [MARS - Mips Assembly and Runtime Simulator Help](https://dpetersanderson.github.io/Help/MarsHelpIntro.html)
+6. [MIPS Reference Sheet - David Broman, KTH](https://www.kth.se/social/files/563c63c9f276547044e8695f/mips-ref-sheet.pdf)
+7. [MIPS Instruction Set - Andrea Gasparetto](https://www.dsi.unive.it/~gasparetto/materials/MIPS_Instruction_Set.pdf)
+8. [MIPS Architecture and Assembly Language Overview](https://minnie.tuhs.org/CompArch/Resources/mips_quick_tutorial.html)
+9. [Accessing Memory in MIPS - Ziad Matni](https://ucsb-cs64.github.io/w20/lectures/lect07.pdf)
+10. [MARS Memory-Mapped Input/Output](https://wilkinsonj.people.charleston.edu/mmio.html)
+11. [Introduction to exceptions and interrupts in Mips](https://www2.it.uu.se/edu/course/homepage/os/vt20/module-1/assignment/)
+12. [Input / Output (I/O) - Michael Langer](https://www.cim.mcgill.ca/~langer/273/20-slides.pdf)
