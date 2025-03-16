@@ -58,7 +58,7 @@ pub fn execute(program: Program, entrypoint: Address) {
             },
             InstructionKind::La => match &instruction.args[0] {
                 InstructionArg::Register(r) => {
-                    let addr = load_address(&instruction.args[1], &registers, &mut memory);
+                    let addr = load_address(&instruction.args[1], &registers, &memory);
                     registers.set(r, addr as Word);
                 }
                 _ => panic!("Invalid argument for LA instruction"),
@@ -120,7 +120,7 @@ pub fn execute(program: Program, entrypoint: Address) {
                 })
             }
             InstructionKind::Jr => {
-                let address = load_address(&instruction.args[0], &registers, &mut memory);
+                let address = load_address(&instruction.args[0], &registers, &memory);
                 log::debug!("Jumping to address {}", address);
             }
             InstructionKind::Syscall => {
@@ -172,7 +172,7 @@ pub fn execute(program: Program, entrypoint: Address) {
                 let address = src + offset;
                 let data: [u8; size_of::<Word>()] = memory.read_const(address).unwrap();
                 let value = Word::from_le_bytes(data);
-                registers.set(&dest, value);
+                registers.set(dest, value);
             }
             InstructionKind::Sw => {
                 let src = load_word(&instruction.args[0], &registers, &mut memory);
