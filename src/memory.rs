@@ -478,7 +478,7 @@ impl Memory {
     /// No need to adjust the range of the heap section.
     pub fn heap_deallocate(&mut self, address: Address, size: usize) {
         // Nuke the data at the address
-        self.write(address, &(vec![0; size]));
+        let _ = self.write(address, &(vec![0; size]));
     }
 
     pub fn dump(&self) -> Vec<u8> {
