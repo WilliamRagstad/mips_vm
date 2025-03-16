@@ -198,10 +198,7 @@ impl VM {
                 Word::from_le_bytes(data)
             }
             InstructionArg::Label(label) => {
-                let address = self
-                    .memory
-                    .address_of_label(label)
-                    .expect("Label not found");
+                let address = self.memory.address_of_label(label).unwrap();
                 let data: [u8; size_of::<Word>()] = self.memory.read_const(address).unwrap();
                 Word::from_le_bytes(data)
             }
@@ -216,10 +213,7 @@ impl VM {
                 let base = self.registers.get(register);
                 base as Address + *offset as Address
             }
-            InstructionArg::Label(label) => self
-                .memory
-                .address_of_label(label)
-                .expect("Label not found"),
+            InstructionArg::Label(label) => self.memory.address_of_label(label).unwrap(),
         }
     }
 
@@ -268,26 +262,29 @@ impl VM {
                 let mut buffer = [0u8; BUFFER_SIZE];
                 let mut i = 0;
                 'print: loop {
-                    let bytes_res = self.memory.read_buf(addr, &mut buffer);
-                    if bytes_res.is_err() {
-                        // If we read less than the buffer size, we reached the end of the memory section
-                        panic!(
-                            "Invalid reading {} bytes at address: 0x{:08x}",
-                            BUFFER_SIZE, addr
-                        );
-                    };
-                    for &byte in &buffer {
-                        if byte == 0 {
-                            break 'print;
+                    match self.memory.read_buf(addr, &mut buffer) {
+                        Ok(()) => {
+                            for &byte in &buffer {
+                                if byte == 0 {
+                                    break 'print;
+                                }
+                                print!("{}", byte as char);
+                                i += 1;
+                                if i % FLUSH_THRESHOLD == 0 {
+                                    // Flush every 64 characters
+                                    std::io::Write::flush(&mut std::io::stdout()).unwrap();
+                                }
+                            }
+                            addr += buffer.len() as Address;
                         }
-                        print!("{}", byte as char);
-                        i += 1;
-                        if i % FLUSH_THRESHOLD == 0 {
-                            // Flush every 64 characters
-                            std::io::Write::flush(&mut std::io::stdout()).unwrap();
+                        Err(err) => {
+                            // If we read less than the buffer size, we reached the end of the memory section
+                            panic!(
+                                "Invalid reading {} bytes at address 0x{:08x}: {:?}",
+                                BUFFER_SIZE, addr, err
+                            );
                         }
                     }
-                    addr += buffer.len() as Address;
                 }
                 // Flush the remaining characters
                 std::io::Write::flush(&mut std::io::stdout()).unwrap();
@@ -328,10 +325,7 @@ impl VM {
             }
             Syscall::Sbrk => {
                 let a0 = self.load_word(&InstructionArg::Register(Register::A0));
-                let address = self
-                    .memory
-                    .heap_allocate(a0 as usize)
-                    .expect("Failed to allocate self.memory");
+                let address = self.memory.heap_allocate(a0 as usize).unwrap();
                 self.registers.set(&Register::V0, address as Word);
             }
             Syscall::Exit | Syscall::Exit2 => {
