@@ -2,6 +2,24 @@ use std::{collections::HashMap, mem::size_of};
 
 use crate::program::{Address, Instruction, Program, Word};
 
+#[derive(Debug, PartialEq)]
+pub enum MemoryError {
+    OutOfBounds,
+    InvalidAddress,
+    InvalidSize,
+    InvalidValue,
+    InvalidSection,
+    InvalidLabel,
+    InvalidInstruction,
+    InvalidData,
+    InvalidHeap,
+    InvalidStack,
+    SegmentFault,    // Invalid memory access
+    ProtectionFault, // Invalid memory access
+}
+
+pub type Result<T> = std::result::Result<T, MemoryError>;
+
 #[derive(Debug, PartialEq, Default)]
 pub enum ProtectionLevel {
     #[default]
@@ -206,26 +224,32 @@ impl Memory {
         self.sections.insert(section.start_address, section);
     }
 
-    pub fn address_of_label(&self, label: &str) -> Option<Address> {
-        self.labels.get(label).copied()
+    pub fn address_of_label(&self, label: &str) -> Result<Address> {
+        self.labels
+            .get(label)
+            .copied()
+            .ok_or(MemoryError::InvalidLabel)
     }
 
-    pub fn label_at_address(&self, address: Address) -> Option<&String> {
+    pub fn label_at_address(&self, address: Address) -> Result<&String> {
         self.labels
             .iter()
             .find_map(|(label, &addr)| if addr == address { Some(label) } else { None })
+            .ok_or(MemoryError::InvalidAddress)
     }
 
-    pub fn find_section(&self, address: Address) -> Option<&MemorySection<u8>> {
+    pub fn find_section(&self, address: Address) -> Result<&MemorySection<u8>> {
         self.sections
             .values()
             .find(|section| section.start_address <= address && address <= section.end_address)
+            .ok_or(MemoryError::InvalidSection)
     }
 
-    pub fn find_section_mut(&mut self, address: Address) -> Option<&mut MemorySection<u8>> {
+    pub fn find_section_mut(&mut self, address: Address) -> Result<&mut MemorySection<u8>> {
         self.sections
             .values_mut()
             .find(|section| section.start_address <= address && address <= section.end_address)
+            .ok_or(MemoryError::InvalidSection)
     }
 
     /// Read from a memory-mapped I/O address location.
@@ -252,52 +276,68 @@ impl Memory {
     }
 
     /// Read from a memory address location and return the data of the specified size
-    pub fn read(&mut self, address: Address, size: usize) -> Option<Vec<u8>> {
+    pub fn read(&mut self, address: Address, size: usize) -> Result<Vec<u8>> {
         let section = self.find_section_mut(address)?;
+        if address + size as Address > section.end_address {
+            return Err(MemoryError::OutOfBounds); // Out of bounds
+        }
         let offset = (address - section.start_address) as usize;
         Self::mmio_read_to(section, address, size);
         section
             .read()
             .get(offset..offset + size)
             .map(|d| d.to_vec())
+            .ok_or(MemoryError::InvalidSize)
     }
 
-    pub fn read_buf(&mut self, address: Address, buf: &mut [u8]) -> Option<()> {
+    pub fn read_buf(&mut self, address: Address, buf: &mut [u8]) -> Result<()> {
         let section = self.find_section_mut(address)?;
+        if address + buf.len() as Address > section.end_address {
+            return Err(MemoryError::OutOfBounds); // Out of bounds
+        }
         let offset = (address - section.start_address) as usize;
         let size = buf.len();
         Self::mmio_read_to(section, address, size);
         buf[..size].copy_from_slice(&section.read()[offset..size]);
-        Some(())
+        Ok(())
     }
 
-    pub fn read_const<const N: usize>(&mut self, address: Address) -> Option<[u8; N]> {
+    pub fn read_const<const N: usize>(&mut self, address: Address) -> Result<[u8; N]> {
         let mut data = [0; N];
         self.read_buf(address, &mut data)?;
-        Some(data)
+        Ok(data)
     }
 
     /// Write to a memory address location.
     /// The value is written in between `(start_address + offset)` to `(start_address + offset + value.len())`.
-    pub fn write(&mut self, address: Address, value: &[u8]) -> Option<()> {
-        let s = self.find_section_mut(address)?;
-        let offset = (address - s.start_address) as usize;
-        Self::mmio_write_to(s, address, value);
-        s.write()
-            .get_mut(offset..offset + value.len())?
+    pub fn write(&mut self, address: Address, value: &[u8]) -> Result<()> {
+        let section = self.find_section_mut(address)?;
+        if address + value.len() as Address > section.end_address {
+            return Err(MemoryError::OutOfBounds); // Out of bounds
+        }
+        let offset = (address - section.start_address) as usize;
+        Self::mmio_write_to(section, address, value);
+        section
+            .write()
+            .get_mut(offset..offset + value.len())
+            .ok_or(MemoryError::InvalidSize)?
             .copy_from_slice(value);
-        Some(())
+        Ok(())
     }
 
     /// Currently, only the text section will be executable
-    pub fn execute(&self, address: Address) -> Option<&Instruction> {
+    pub fn execute(&self, address: Address) -> Result<&Instruction> {
         if self.text.start_address <= address && address <= self.text.end_address {
             // TODO: Improve finding the instruction by address performance
             // let index = (address - self.text.start_address) as usize / Instruction::size();
             // return self.text.execute().get(index);
-            self.text.execute().iter().find(|i| i.address == address)
+            self.text
+                .execute()
+                .iter()
+                .find(|i| i.address == address)
+                .ok_or(MemoryError::InvalidInstruction)
         } else {
-            None
+            Err(MemoryError::ProtectionFault)
         }
     }
 
@@ -330,26 +370,26 @@ impl Memory {
     /// so the `start_address -= 1` to adjust the range of the stack section.
     ///
     /// Returns:
-    /// - `Some(())` if the push is successful.
-    pub fn stack_push(&mut self, value: u8) -> Option<()> {
+    /// - `Ok(())` if the push is successful.
+    pub fn stack_push(&mut self, value: u8) -> Result<()> {
         // Check if the stack section is colliding with the heap section
         if self.stack().start_address - 1 <= self.heap().end_address {
-            return None;
+            return Err(MemoryError::InvalidStack);
         }
         self.stack_mut().write().push(value);
         self.stack_mut().start_address -= 1;
-        Some(())
+        Ok(())
     }
 
     /// Pop a byte from the stack.
     /// **The stack grows downwards** (from high address to lower addresses),
     /// so the `start_address += 1` to adjust the range of the stack section.
-    pub fn stack_pop(&mut self) -> Option<u8> {
+    pub fn stack_pop(&mut self) -> Result<u8> {
         let res = self.stack_mut().write().pop();
         if res.is_some() {
             self.stack_mut().start_address += 1;
         }
-        res
+        res.ok_or(MemoryError::InvalidStack)
     }
 
     /// Push a word to the stack.
@@ -357,31 +397,31 @@ impl Memory {
     /// so the `start_address -= WORD_SIZE` to adjust the range of the stack section.
     ///
     /// Returns:
-    /// - `Some(())` if the push is successful.
-    /// - `None` if the stack section is colliding with the heap section.
-    pub fn stack_push_word(&mut self, value: Word) -> Option<()> {
+    /// - `Ok(())` if the push is successful.
+    /// - `Err` if the stack section is colliding with the heap section.
+    pub fn stack_push_word(&mut self, value: Word) -> Result<()> {
         const WORD_SIZE: usize = size_of::<Word>();
         // Check if the stack section is colliding with the heap section
         if self.stack().start_address - WORD_SIZE as Address <= self.heap().end_address {
-            return None;
+            return Err(MemoryError::InvalidStack);
         }
         let bytes: [u8; WORD_SIZE] = value.to_le_bytes();
         self.stack_mut().write().extend_from_slice(&bytes);
         self.stack_mut().start_address -= WORD_SIZE as Address;
-        Some(())
+        Ok(())
     }
 
     /// Pop a word from the stack.
     /// **The stack grows downwards** (from high address to lower addresses),
     /// so the `start_address += WORD_SIZE` to adjust the range of the stack section.
-    pub fn stack_pop_word(&mut self) -> Option<Word> {
+    pub fn stack_pop_word(&mut self) -> Result<Word> {
         const WORD_SIZE: usize = size_of::<Word>();
         let mut bytes = [0; WORD_SIZE];
         #[allow(clippy::needless_range_loop)]
         for i in 0..WORD_SIZE {
             bytes[i] = self.stack_pop()?;
         }
-        Some(Word::from_le_bytes(bytes))
+        Ok(Word::from_le_bytes(bytes))
     }
 
     /// Push an address to the stack.
@@ -391,30 +431,29 @@ impl Memory {
     /// Returns:
     /// - `Some(())` if the push is successful.
     /// - `None` if the stack section is colliding with the heap section.
-    pub fn stack_push_address(&mut self, value: Address) -> Option<()> {
+    pub fn stack_push_address(&mut self, value: Address) -> Result<()> {
         const ADDRESS_SIZE: usize = size_of::<Address>();
         // Check if the stack section is colliding with the heap section
         if self.stack().start_address - ADDRESS_SIZE as Address <= self.heap().end_address {
-            return None;
+            return Err(MemoryError::InvalidStack);
         }
         let bytes: [u8; ADDRESS_SIZE] = value.to_le_bytes();
         self.stack_mut().write().extend_from_slice(&bytes);
         self.stack_mut().start_address -= ADDRESS_SIZE as Address;
-
-        Some(())
+        Ok(())
     }
 
     /// Pop an address from the stack.
     /// **The stack grows downwards** (from high address to lower addresses),
     /// so the `start_address += ADDRESS_SIZE` to adjust the range of the stack section.
-    pub fn stack_pop_address(&mut self) -> Option<Address> {
+    pub fn stack_pop_address(&mut self) -> Result<Address> {
         const ADDRESS_SIZE: usize = size_of::<Address>();
         let mut bytes = [0; ADDRESS_SIZE];
         #[allow(clippy::needless_range_loop)]
         for i in 0..ADDRESS_SIZE {
             bytes[i] = self.stack_pop()?;
         }
-        Some(Address::from_le_bytes(bytes))
+        Ok(Address::from_le_bytes(bytes))
     }
 
     /// Allocate memory on the heap of a given size (number of bytes).
@@ -424,14 +463,14 @@ impl Memory {
     /// Returns:
     /// - `Some(Address)` if the allocation is successful, with the address of the allocated memory.
     /// - `None` if the allocation is unsuccessful, due to out-of-memory or heap-stack collision.
-    pub fn heap_allocate(&mut self, size: usize) -> Option<Address> {
+    pub fn heap_allocate(&mut self, size: usize) -> Result<Address> {
         // Check if the heap section is colliding with the stack section
         if self.heap().end_address + size as Address >= self.stack().start_address {
-            return None;
+            return Err(MemoryError::InvalidHeap);
         }
         let address = self.heap_mut().end_address;
         self.heap_mut().end_address += size as Address;
-        Some(address)
+        Ok(address)
     }
 
     /// Deallocate memory on the heap of a given size (number of bytes).
@@ -461,7 +500,10 @@ impl Memory {
         if buf.len() < text_end + text_size {
             buf.resize(text_end + text_size, 0);
         }
-        buf[text_end..text_end + text_size].fill(0xFF);
+        const CODE: u32 = 0xCC00DDEE;
+        (text_start..text_end).for_each(|i| {
+            buf[i] = (CODE >> (((i - text_start) % 4) * 8)) as u8;
+        });
         buf
     }
 }

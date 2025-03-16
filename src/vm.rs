@@ -1,7 +1,7 @@
 use colorful::Colorful;
 
 use crate::{
-    memory::Memory,
+    memory::{self, Memory},
     program::{Address, Instruction, InstructionArg, InstructionKind, Program, Word, LABEL_COLOR},
     registers::{Register, Registers},
 };
@@ -36,7 +36,7 @@ impl VM {
         let mut pc = entrypoint;
 
         'execution: loop {
-            if let Some(new_block) = self.memory.label_at_address(pc) {
+            if let Ok(new_block) = self.memory.label_at_address(pc) {
                 log::debug!(
                     "Executing block at 0x{:08x} {}...",
                     pc,
@@ -46,7 +46,7 @@ impl VM {
             let instruction = self
                 .memory
                 .execute(pc)
-                .unwrap_or_else(|| panic!("No instruction found at address 0x{:08x}", pc))
+                .unwrap_or_else(|_| panic!("No instruction found at address 0x{:08x}", pc))
                 .clone();
             log::debug!(
                 "Executing instruction at 0x{:08x}: {}",
@@ -190,8 +190,9 @@ impl VM {
             InstructionArg::RegisterOffset(register, offset) => {
                 let base = self.registers.get(register);
                 let address = base as Address + *offset as Address;
-                let result: Option<[u8; size_of::<Word>()]> = self.memory.read_const(address);
-                let Some(data) = result else {
+                let result: memory::Result<[u8; size_of::<Word>()]> =
+                    self.memory.read_const(address);
+                let Ok(data) = result else {
                     panic!("Invalid address: 0x{:08x}", address);
                 };
                 Word::from_le_bytes(data)
@@ -261,15 +262,19 @@ impl VM {
             }
             Syscall::PrintString => {
                 const FLUSH_THRESHOLD: usize = 64;
+                const BUFFER_SIZE: usize = 128;
                 let a0 = self.load_word(&InstructionArg::Register(Register::A0));
                 let mut addr = a0 as Address;
-                let mut buffer = [0u8; 128];
+                let mut buffer = [0u8; BUFFER_SIZE];
                 let mut i = 0;
                 'print: loop {
                     let bytes_res = self.memory.read_buf(addr, &mut buffer);
-                    if bytes_res.is_none() {
+                    if bytes_res.is_err() {
                         // If we read less than the buffer size, we reached the end of the memory section
-                        panic!("Invalid address: 0x{:08x}", addr);
+                        panic!(
+                            "Invalid reading {} bytes at address: 0x{:08x}",
+                            BUFFER_SIZE, addr
+                        );
                     };
                     for &byte in &buffer {
                         if byte == 0 {
