@@ -26,7 +26,15 @@ A *simple and experimental* MIPS virtual machine, currently interpreting assembl
   - [X] Registers
   - [X] Execution (Fetch-Decode-Execute)
   - [X] System calls
+- [ ] Device drivers
+  - [X] Memory mapped I/O (MMIO)
+  - [ ] Interrupts
+- [ ] Exception handling
+- [ ] JIT compilation
 - [ ] Compiler
+  - [ ] Linker
+    - [ ] Static linking
+    - [ ] Dynamic linking
   - [ ] Register allocation
   - [ ] Instruction selection
   - [ ] Tail call optimization
@@ -40,17 +48,9 @@ A *simple and experimental* MIPS virtual machine, currently interpreting assembl
   - [ ] Target platforms
     - [ ] Windows (PE)
     - [ ] Linux (ELF)
-- [ ] Linker
-  - [ ] Static linking
-  - [ ] Dynamic linking
-- [ ] Device drivers
-  - [X] Memory mapped I/O (MMIO)
-  - [ ] Interrupts
-- [ ] Exception handling
-- [ ] Multi-threading
-- [ ] JIT compilation
 - [ ] Debugger
 - [ ] Profiler
+- [ ] Multi-threading
 
 On going tasks include performance optimizations, documentation, tests, examples and more.
 
