@@ -12,13 +12,8 @@ fn main() {
     let input = std::env::args().nth(1).expect("No input file provided");
     let input = std::fs::read_to_string(input).expect("Failed to read input file");
     if let Some(program) = parse(&input) {
-        let entrypoint = program
-            .text
-            .entry_block()
-            .expect("No entry block found")
-            .address;
         let mut vm = VM::new(program);
-        vm.execute(entrypoint);
+        vm.execute(vm.entrypoint().expect("No entrypoint found"));
     }
 }
 

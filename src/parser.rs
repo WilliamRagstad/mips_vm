@@ -1,13 +1,11 @@
-use std::collections::HashMap;
-
 use colorful::Colorful;
 use pest::Parser;
 use pest_derive::Parser;
 
 use crate::{
     program::{
-        Address, Block, DataSection, Immediate, Instruction, InstructionArg, InstructionKind,
-        Program, RawData, Section, TextSection,
+        Block, DataSection, Immediate, Instruction, InstructionArg, InstructionKind, Program,
+        Section, StaticData, TextSection,
     },
     registers::Register,
 };
@@ -32,26 +30,23 @@ pub fn parse(input: &str) -> Option<Program> {
             }
             log::trace!("{}", "======= PROGRAM =======".blue());
             let mut prog = Program {
-                data: DataSection {
-                    globals: HashMap::new(),
+                data_section: DataSection {
+                    initialized: Vec::new(),
                 },
-                text: TextSection {
+                text_section: TextSection {
                     blocks: Vec::new(),
                     global_labels: Vec::new(),
                 },
             };
-            let mut address: Address = 0;
             let mut current_section: Option<Section> = None;
 
             // Unnamed initial block
             let mut current_block: Block = Block {
-                address,
                 label: String::new(),
                 instructions: Vec::new(),
             };
 
             for pair in pairs {
-                log::trace!("Current address: 0x{:08x}", address);
                 match pair.as_rule() {
                     Rule::directive => {
                         let mut inner = pair.into_inner();
@@ -76,7 +71,7 @@ pub fn parse(input: &str) -> Option<Program> {
                                     }
                                     _ => unreachable!(),
                                 };
-                                prog.text.global_labels.push(symbol);
+                                prog.text_section.global_labels.push(symbol);
                             }
                             _ => unreachable!(),
                         }
@@ -101,8 +96,8 @@ pub fn parse(input: &str) -> Option<Program> {
                                         let mut data = data[1..data.len() - 1].to_vec();
                                         data.push(0); // null-terminated string
                                         log::trace!(".asciiz {:?}", &data);
-                                        RawData {
-                                            address,
+                                        StaticData {
+                                            label,
                                             source,
                                             data,
                                         }
@@ -113,8 +108,8 @@ pub fn parse(input: &str) -> Option<Program> {
                                         // remove first and last character (")
                                         let data = data[1..data.len() - 1].to_vec();
                                         log::trace!(".ascii {:?}", &data);
-                                        RawData {
-                                            address,
+                                        StaticData {
+                                            label,
                                             source,
                                             data,
                                         }
@@ -123,8 +118,8 @@ pub fn parse(input: &str) -> Option<Program> {
                                         let word: i32 =
                                             inner.next().unwrap().as_str().parse().unwrap();
                                         log::trace!(".word {:?}", word);
-                                        RawData {
-                                            address,
+                                        StaticData {
+                                            label,
                                             source,
                                             data: word.to_le_bytes().to_vec(),
                                         }
@@ -133,24 +128,22 @@ pub fn parse(input: &str) -> Option<Program> {
                                         let byte: u8 =
                                             inner.next().unwrap().as_str().parse().unwrap();
                                         log::trace!(".byte {:?}", byte);
-                                        RawData {
-                                            address,
+                                        StaticData {
+                                            label,
                                             source,
                                             data: vec![byte],
                                         }
                                     }
                                     _ => unreachable!(),
                                 };
-                                address += data.size() as Address;
-                                prog.data.globals.insert(label, data);
+                                prog.data_section.initialized.push(data);
                             } else {
                                 unreachable!();
                             }
                         } else if current_section == Some(Section::Text) {
                             log::trace!("Pushing block: {:?}", current_block);
-                            prog.text.blocks.push(current_block);
+                            prog.text_section.blocks.push(current_block);
                             current_block = Block {
-                                address,
                                 label,
                                 instructions: Vec::new(),
                             };
@@ -189,12 +182,7 @@ pub fn parse(input: &str) -> Option<Program> {
                         log::trace!("  - Kind: {:?}", kind);
                         log::trace!("  - Args: {:?}", args);
 
-                        let instr = Instruction {
-                            address,
-                            kind,
-                            args,
-                        };
-                        address += Instruction::size() as Address;
+                        let instr = Instruction { kind, args };
                         current_block.instructions.push(instr);
                     }
                     Rule::EOI => {}
@@ -202,7 +190,7 @@ pub fn parse(input: &str) -> Option<Program> {
                 }
             }
             log::trace!("Pushing final block: {:?}", current_block);
-            prog.text.blocks.push(current_block);
+            prog.text_section.blocks.push(current_block);
 
             Some(prog)
         }

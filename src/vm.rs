@@ -24,6 +24,21 @@ impl VM {
         Self { registers, memory }
     }
 
+    pub fn entrypoint(&self) -> Option<Address> {
+        self.memory
+            .labels()
+            .iter()
+            .find_map(|(label, address)| {
+                if label.contains("main") || label.contains("entry") || label.contains("start") {
+                    Some(*address)
+                } else {
+                    None
+                }
+            })
+            .or(Some(self.memory.text().start_address))
+        // Or return the first address of the text section
+    }
+
     pub fn execute(&mut self, entrypoint: Address) {
         log::debug!("{}", "======= EXECUTION =======".blue());
 
@@ -393,12 +408,7 @@ mod test_interpreter {
         let prog = parse(input);
         assert_ne!(prog, None);
         let program = prog.unwrap();
-        let entrypoint = program
-            .text
-            .entry_block()
-            .expect("No entry block found")
-            .address;
         let mut vm = VM::new(program);
-        vm.execute(entrypoint);
+        vm.execute(vm.entrypoint().expect("No entrypoint found"));
     }
 }

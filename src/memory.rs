@@ -62,8 +62,8 @@ type WriteHandler<T> = fn(Address, T);
 pub struct MemorySection<T> {
     name: String,
     protection: ProtectionLevel,
-    start_address: Address,
-    end_address: Address,
+    pub start_address: Address,
+    pub end_address: Address,
     data: Vec<T>,
     read_handler: Option<ReadHandler<T>>,
     write_handler: Option<WriteHandler<T>>,
@@ -124,70 +124,68 @@ pub struct Memory {
 }
 
 impl Memory {
+    /// Load the program into memory.
+    /// The program memory is loaded  with the following sections:
+    /// - `.text` section: read-only and executable (code) from the program's instructions. (**Lowest addresses**)
+    /// - `.data` section: read-write and typically contains global variables from the initialized data. (**Slighly higher addresses**)
+    /// - `.bss` section: read-write and is used for uninitialized data. (**Higher addresses**)
+    /// - `.heap` section: read-write and is used for dynamic memory allocation from the dynamically allocated memory. (**Second-to-highest addresses**)
+    /// - `.stack` section: read-write and is used for function calls and local variables from the stack. (**Highest addresses**)
     pub fn load(program: Program) -> Self {
+        let mut address: Address = 0;
         let mut labels = HashMap::new();
-        for (name, data) in &program.data.globals {
-            labels.insert(name.clone(), data.address);
-        }
-        for block in &program.text.blocks {
-            if !block.label.is_empty() {
-                labels.insert(block.label.clone(), block.address);
-            }
-        }
-
         let mut sections = HashMap::new();
 
-        if program.text.blocks.is_empty() {
+        if program.text_section.blocks.is_empty() {
             panic!("Invalid program: no .text code blocks found");
         }
+        let text_start_address = address;
+        let mut text_label_address: Address = text_start_address;
+        for block in &program.text_section.blocks {
+            if !block.label.is_empty() {
+                labels.insert(block.label.clone(), text_label_address);
+            }
+            text_label_address += (block.instructions.len() * Instruction::size()) as Address;
+        }
+        let text_instructions = program.text_section.instructions_move();
+        address += (text_instructions.len() * Instruction::size()) as Address;
+        let text_end_address = address; // - Instruction::size() as Address;
         let text: MemorySection<Instruction> = MemorySection {
             name: ".text".to_string(),
             protection: ProtectionLevel::ReadExecute,
-            start_address: program.text.blocks.first().unwrap().address,
-            end_address: program
-                .text
-                .blocks
-                .last()
-                .unwrap()
-                .instructions
-                .last()
-                .unwrap()
-                .address,
-            data: program.text.instructions_move(),
+            start_address: text_start_address,
+            end_address: text_end_address,
+            data: text_instructions,
             read_handler: None,
             write_handler: None,
         };
 
-        let data = if !program.data.empty() {
+        let data = if !program.data_section.empty() {
+            let data_start_address = address;
+            let data_initialized = program.data_section.initialized_move();
+            let mut data_label_address: Address = data_start_address;
+            for data in &data_initialized {
+                labels.insert(data.label.clone(), data_label_address);
+                data_label_address += data.data.len() as Address;
+            }
+            let data_raw_initialized: Vec<u8> = data_initialized
+                .into_iter()
+                .flat_map(|rd| rd.data)
+                .collect();
+            address += data_raw_initialized.len() as Address;
+            let data_end_address = address; // - 1;
+
             let data = MemorySection {
                 name: ".data".to_string(),
                 protection: ProtectionLevel::ReadWrite,
-                start_address: program
-                    .data
-                    .data()
-                    .iter()
-                    .map(|d| d.address())
-                    .min()
-                    .unwrap_or(text.end_address + 1),
-                end_address: program
-                    .data
-                    .data()
-                    .iter()
-                    .map(|d| d.address())
-                    .max()
-                    .unwrap_or(text.end_address + 1),
-                data: program
-                    .data
-                    .data_move()
-                    .into_iter()
-                    .flat_map(|rd| rd.data)
-                    .collect(),
+                start_address: data_start_address,
+                end_address: data_end_address,
+                data: data_raw_initialized,
                 read_handler: None,
                 write_handler: None,
             };
-            let data_address = data.start_address;
-            sections.insert(data.start_address, data);
-            Some(data_address)
+            sections.insert(data_start_address, data);
+            Some(data_start_address)
         } else {
             None
         };
@@ -335,16 +333,28 @@ impl Memory {
     pub fn execute(&self, address: Address) -> Result<&Instruction> {
         if self.text.start_address <= address && address <= self.text.end_address {
             // TODO: Improve finding the instruction by address performance
-            // let index = (address - self.text.start_address) as usize / Instruction::size();
-            // return self.text.execute().get(index);
-            self.text
+            let index = (address - self.text.start_address) as usize / Instruction::size();
+            return self
+                .text
                 .execute()
-                .iter()
-                .find(|i| i.address == address)
-                .ok_or(MemoryError::InvalidInstruction)
+                .get(index)
+                .ok_or(MemoryError::InvalidInstruction);
+            // self.text
+            //     .execute()
+            //     .iter()
+            //     .find(|i| i.address == address)
+            //     .ok_or(MemoryError::InvalidInstruction)
         } else {
             Err(MemoryError::ProtectionFault)
         }
+    }
+
+    pub fn labels(&self) -> &HashMap<String, Address> {
+        &self.labels
+    }
+
+    pub fn text(&self) -> &MemorySection<Instruction> {
+        &self.text
     }
 
     pub fn data(&self) -> Option<&MemorySection<u8>> {
@@ -489,15 +499,16 @@ impl Memory {
 
     pub fn dump(&self) -> Vec<u8> {
         let mut buf = Vec::new();
-        let mut offset = 0;
         for section in self.sections.values() {
-            let data = section.read();
-            if buf.len() < offset + data.len() {
-                buf.resize(offset + data.len(), 0);
+            if section.data.is_empty() {
+                continue;
             }
-
-            buf[offset..offset + data.len()].copy_from_slice(data);
-            offset += data.len();
+            let start = section.start_address as usize;
+            let end = section.end_address as usize;
+            if buf.len() < end {
+                buf.resize(end, 0);
+            }
+            buf[start..end].copy_from_slice(section.read());
         }
         // Fill in text section with 0xFF
         let text_end = self.text.end_address as usize;

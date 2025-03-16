@@ -1,8 +1,5 @@
-use std::collections::HashMap;
-
-use colorful::{Color, Colorful};
-
 use crate::registers::Register;
+use colorful::{Color, Colorful};
 
 /// Represents an address in a MIPS program.
 pub type Address = u32;
@@ -48,24 +45,25 @@ impl Section {
 
 /// Represents raw data in the data section.
 #[derive(Clone, Debug, PartialEq)]
-pub struct RawData {
+pub struct StaticData {
     /// The source code of the data directive.
     pub source: String,
-    /// The address where the data is stored.
-    pub address: Address,
+    /// The label of the data directive.
+    pub label: String,
     /// The actual data bytes.
     pub data: Vec<u8>,
 }
 
-impl RawData {
+impl StaticData {
     pub fn show(&self) -> String {
-        self.source.clone()
+        format!("{}: {}\n", self.label, self.source)
     }
 
     pub fn show_color(&self) -> String {
         let mut result = String::new();
         result.push_str(&format!(
-            "{}\n",
+            "{}: {}\n",
+            self.label.clone().color(LABEL_COLOR),
             self.source.clone().color(DATA_SOURCE_COLOR)
         ));
         // Actual data in comment # ... in gray
@@ -79,76 +77,43 @@ impl RawData {
     pub fn size(&self) -> usize {
         self.data.len()
     }
-
-    pub fn address(&self) -> Address {
-        self.address
-    }
 }
 
 /// Represents the data section of a MIPS program.
 #[derive(Debug, PartialEq)]
 pub struct DataSection {
-    /// A map of global labels to their corresponding raw data.
-    pub globals: HashMap<String, RawData>,
+    /// Initialized data.
+    /// A list of global labels to their corresponding raw data.
+    pub initialized: Vec<StaticData>,
 }
 
 impl DataSection {
     pub fn empty(&self) -> bool {
-        self.globals.is_empty()
+        self.initialized.is_empty()
     }
 
-    pub fn data(&self) -> Vec<&RawData> {
-        let mut data: Vec<&RawData> = self.globals.values().collect();
-        data.sort_by_key(|data| data.address);
-        data
+    pub fn initialized(&self) -> Vec<&StaticData> {
+        self.initialized.iter().collect()
     }
 
-    pub fn data_move(self) -> Vec<RawData> {
-        let mut data: Vec<RawData> = self.globals.into_values().collect();
-        data.sort_by_key(|data| data.address);
-        data
-    }
-
-    pub fn address_of_label(&self, label: &str) -> Option<Address> {
-        self.globals.get(label).map(|data| data.address)
+    pub fn initialized_move(self) -> Vec<StaticData> {
+        self.initialized
     }
 
     pub fn show(&self) -> String {
         let mut result = String::new();
-        for (label, directive) in &self.globals {
-            result.push_str(&format!("{}: {}\n", label, directive.show()));
+        for data in &self.initialized {
+            result.push_str(&data.show());
         }
         result
     }
 
     pub fn show_color(&self) -> String {
         let mut result = String::new();
-        let mut pairs = self
-            .globals
-            .keys()
-            .map(|l| (l.clone(), self.globals.get(l).unwrap()))
-            .collect::<Vec<_>>();
-        pairs.sort_by_key(|(_, directive)| directive.address());
-        for (label, directive) in pairs {
-            result.push_str(&format!(
-                "{}: {}\n",
-                label.clone().color(LABEL_COLOR),
-                directive.show_color()
-            ));
+        for data in &self.initialized {
+            result.push_str(&data.show_color());
         }
         result
-    }
-
-    pub fn find_by_address(&self, address: Address) -> Option<&RawData> {
-        self.globals
-            .values()
-            .find(|&directive| directive.address() == address)
-    }
-
-    pub fn find_mut_by_address(&mut self, address: Address) -> Option<&mut RawData> {
-        self.globals
-            .values_mut()
-            .find(|directive| directive.address() == address)
     }
 }
 
@@ -442,8 +407,6 @@ impl InstructionArg {
 /// Represents a MIPS instruction.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Instruction {
-    /// The address of the instruction.
-    pub address: Address,
     /// The kind of instruction.
     pub kind: InstructionKind,
     /// The arguments to the instruction.
@@ -485,8 +448,6 @@ impl Instruction {
 /// Represents a block of instructions in the text section.
 #[derive(Debug, PartialEq)]
 pub struct Block {
-    /// The address of the block.
-    pub address: Address,
     /// The label of the block.
     pub label: String,
     /// The instructions in the block.
@@ -547,39 +508,6 @@ impl TextSection {
             .collect()
     }
 
-    pub fn find_block_by_address(&self, address: Address) -> Option<&Block> {
-        self.blocks.iter().find(|block| block.address == address)
-    }
-
-    pub fn find_instruction_by_address(&self, address: Address) -> Option<&Instruction> {
-        for block in &self.blocks {
-            for instruction in &block.instructions {
-                if instruction.address == address {
-                    return Some(instruction);
-                }
-            }
-        }
-        None
-    }
-
-    pub fn address_of_label(&self, label: &str) -> Option<Address> {
-        self.blocks
-            .iter()
-            .find(|block| block.label == label)
-            .map(|block| block.address)
-    }
-
-    pub fn entry_block(&self) -> Option<&Block> {
-        self.blocks
-            .iter()
-            .find(|block| {
-                block.label.contains("main")
-                    || block.label.contains("entry")
-                    || block.label.contains("start")
-            })
-            .or(self.blocks.first())
-    }
-
     pub fn show(&self) -> String {
         let mut result = String::new();
         for label in &self.global_labels {
@@ -611,31 +539,23 @@ impl TextSection {
 #[derive(Debug, PartialEq)]
 pub struct Program {
     /// The data section of the program.
-    pub data: DataSection,
+    pub data_section: DataSection,
     /// The text section of the program.
-    pub text: TextSection,
+    pub text_section: TextSection,
 }
 
 impl Program {
-    pub fn address_of_label(&self, label: &str) -> Option<Address> {
-        if let Some(address) = self.data.address_of_label(label) {
-            Some(address)
-        } else {
-            self.text.address_of_label(label)
-        }
-    }
-
     pub fn show(&self) -> String {
         let mut result = String::new();
         // Data
-        if !self.data.empty() {
+        if !self.data_section.empty() {
             result.push_str(&format!("{}\n", Section::Data.show()));
-            result.push_str(&self.data.show());
+            result.push_str(&self.data_section.show());
         }
         // Text
-        if !self.text.empty() {
+        if !self.text_section.empty() {
             result.push_str(&format!("\n{}\n", Section::Text.show()));
-            result.push_str(&self.text.show());
+            result.push_str(&self.text_section.show());
         }
         result
     }
@@ -643,17 +563,17 @@ impl Program {
     pub fn show_color(&self) -> String {
         let mut result = String::new();
         // Data
-        if !self.data.empty() {
+        if !self.data_section.empty() {
             result.push_str(&format!("{}\n", Section::Data.show_color()));
-            result.push_str(&self.data.show_color());
+            result.push_str(&self.data_section.show_color());
         }
-        if !self.data.empty() && !self.text.empty() {
+        if !self.data_section.empty() && !self.text_section.empty() {
             result.push('\n'); // Add a newline between sections
         }
         // Text
-        if !self.text.empty() {
+        if !self.text_section.empty() {
             result.push_str(&format!("{}\n", Section::Text.show_color()));
-            result.push_str(&self.text.show_color());
+            result.push_str(&self.text_section.show_color());
         }
         result
     }
