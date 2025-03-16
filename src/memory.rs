@@ -37,16 +37,21 @@ impl ProtectionLevel {
     }
 }
 
+type ReadHandler<T> = fn(Address) -> T;
+type WriteHandler<T> = fn(Address, T);
+
 #[derive(Debug, Default)]
 pub struct MemorySection<T> {
-    pub protection: ProtectionLevel,
-    pub start_address: Address,
-    pub end_address: Address,
+    protection: ProtectionLevel,
+    start_address: Address,
+    end_address: Address,
     data: Vec<T>,
+    read_handler: Option<ReadHandler<T>>,
+    write_handler: Option<WriteHandler<T>>,
 }
 
 impl<T> MemorySection<T> {
-    pub fn read(&self) -> &Vec<T> {
+    pub fn read(&self) -> &[T] {
         if !self.protection.is_readable() {
             panic!("Memory section is not readable");
         }
@@ -60,7 +65,7 @@ impl<T> MemorySection<T> {
         &mut self.data
     }
 
-    pub fn execute(&self) -> &Vec<T> {
+    pub fn execute(&self) -> &[T] {
         if !self.protection.is_executable() {
             panic!("Memory section is not executable");
         }
@@ -71,15 +76,15 @@ impl<T> MemorySection<T> {
 pub struct Memory {
     /// Labels with their names as the key and their address as the value.
     /// This is used to store the mapping of all address of labels in the original program.
-    pub labels: HashMap<String, Address>,
+    labels: HashMap<String, Address>,
     /// Sections of memory with their start address as the key.
-    pub sections: HashMap<Address, MemorySection<u8>>,
+    sections: HashMap<Address, MemorySection<u8>>,
     /// Text section: contains the program's instructions
     /// This section is read-only and executable (code).
-    pub text: MemorySection<Instruction>,
+    text: MemorySection<Instruction>,
     /// Data section: contains initialized data
     /// This section is read-write and typically contains global variables.
-    pub data: Option<Address>,
+    data: Option<Address>,
     /// Heap section: contains dynamically allocated memory
     /// This section is read-write and is used for dynamic memory allocation.
     /// The section is **allocated by the operating system at runtime**.
@@ -87,7 +92,7 @@ pub struct Memory {
     /// - Is managed by the programmer using functions like malloc and free.
     /// - Is shared among all threads of a process.
     /// - Grows upwards, starting from a low address and growing towards higher addresses.
-    pub heap: Address,
+    heap: Address,
     /// Stack section: contains the stack
     /// This section is read-write and is used for function calls and local variables.
     /// The stack:
@@ -95,7 +100,7 @@ pub struct Memory {
     /// - Is private to each thread of a process.
     /// - Is used for function calls, local variables, and bookkeeping information.
     /// - Grows downwards, starting from a high address and growing towards lower addresses.
-    pub stack: Address,
+    stack: Address,
 }
 
 impl Memory {
@@ -128,6 +133,8 @@ impl Memory {
                 .unwrap()
                 .address,
             data: program.text.instructions_move(),
+            read_handler: None,
+            write_handler: None,
         };
 
         let data = if !program.data.empty() {
@@ -153,6 +160,8 @@ impl Memory {
                     .into_iter()
                     .flat_map(|rd| rd.data)
                     .collect(),
+                read_handler: None,
+                write_handler: None,
             };
             let data_address = data.start_address;
             sections.insert(data.start_address, data);
@@ -166,6 +175,8 @@ impl Memory {
             start_address: 0x10000000,
             end_address: 0x10000000,
             data: Vec::new(),
+            read_handler: None,
+            write_handler: None,
         };
         let heap_address = heap.start_address;
         sections.insert(heap.start_address, heap);
@@ -175,6 +186,8 @@ impl Memory {
             start_address: 0x7fffefff,
             end_address: 0x7fffefff,
             data: Vec::new(),
+            read_handler: None,
+            write_handler: None,
         };
         let stack_address = stack.start_address;
         sections.insert(stack.start_address, stack);
@@ -187,6 +200,10 @@ impl Memory {
             heap: heap_address,
             stack: stack_address,
         }
+    }
+
+    pub fn add_section(&mut self, section: MemorySection<u8>) {
+        self.sections.insert(section.start_address, section);
     }
 
     pub fn address_of_label(&self, label: &str) -> Option<Address> {
@@ -211,28 +228,42 @@ impl Memory {
             .find(|section| section.start_address <= address && address <= section.end_address)
     }
 
-    /// Read from a memory address location and return the data of the specified size
-    pub fn read(&self, address: Address, size: usize) -> Option<&[u8]> {
-        self.find_section(address)?.read().get(
-            (address as usize - self.sections[&address].start_address as usize)
-                ..(address as usize - self.sections[&address].start_address as usize + size),
-        )
-    }
-
-    pub fn read_buf(&self, address: Address, buf: &mut [u8]) -> Option<usize> {
-        let section = self.find_section(address)?;
-        let offset = (address - section.start_address) as usize;
-        let data = section.read();
-        let len = data.len() - offset;
-        buf[..len].copy_from_slice(&data[offset..len]);
-        Some(len)
-    }
-
-    pub fn read_const<const N: usize>(&self, address: Address) -> Option<[u8; N]> {
-        let mut data = [0; N];
-        if self.read_buf(address, &mut data)? != N {
-            return None;
+    /// Read from a memory-mapped I/O address location.
+    /// This is used to read from a memory-mapped I/O device.
+    ///
+    /// Write the result into the memory address location at `self.data`.
+    fn mmio_read_to(section: &mut MemorySection<u8>, address: Address, size: usize) {
+        if let Some(read_handler) = section.read_handler {
+            let offset = (address - section.start_address) as usize;
+            for i in 0..size {
+                section.write()[offset + i] = read_handler(address + i as Address);
+            }
         }
+    }
+
+    /// Read from a memory address location and return the data of the specified size
+    pub fn read(&mut self, address: Address, size: usize) -> Option<Vec<u8>> {
+        let section = self.find_section_mut(address)?;
+        let offset = (address - section.start_address) as usize;
+        Self::mmio_read_to(section, address, size);
+        section
+            .read()
+            .get(offset..offset + size)
+            .map(|d| d.to_vec())
+    }
+
+    pub fn read_buf(&mut self, address: Address, buf: &mut [u8]) -> Option<()> {
+        let section = self.find_section_mut(address)?;
+        let offset = (address - section.start_address) as usize;
+        Self::mmio_read_to(section, address, buf.len());
+        let len = buf.len();
+        buf[..len].copy_from_slice(&section.read()[offset..len]);
+        Some(())
+    }
+
+    pub fn read_const<const N: usize>(&mut self, address: Address) -> Option<[u8; N]> {
+        let mut data = [0; N];
+        self.read_buf(address, &mut data)?;
         Some(data)
     }
 
@@ -253,9 +284,10 @@ impl Memory {
             // TODO: Improve finding the instruction by address performance
             // let index = (address - self.text.start_address) as usize / Instruction::size();
             // return self.text.execute().get(index);
-            return self.text.execute().iter().find(|i| i.address == address);
+            self.text.execute().iter().find(|i| i.address == address)
+        } else {
+            None
         }
-        None
     }
 
     pub fn data(&self) -> Option<&MemorySection<u8>> {

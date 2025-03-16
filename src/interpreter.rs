@@ -36,7 +36,8 @@ pub fn execute(program: Program, entrypoint: Address) {
         }
         let instruction = memory
             .execute(pc)
-            .unwrap_or_else(|| panic!("No instruction found at address 0x{:08x}", pc));
+            .unwrap_or_else(|| panic!("No instruction found at address 0x{:08x}", pc))
+            .clone();
         log::debug!(
             "Executing instruction at 0x{:08x}: {}",
             pc,
@@ -50,50 +51,52 @@ pub fn execute(program: Program, entrypoint: Address) {
         match instruction.kind {
             InstructionKind::Li => match &instruction.args[0] {
                 InstructionArg::Register(r) => {
-                    let value = load_word(&instruction.args[1], &registers, &memory);
+                    let value = load_word(&instruction.args[1], &registers, &mut memory);
                     registers.set(r, value);
                 }
                 _ => panic!("Invalid argument for LI instruction"),
             },
             InstructionKind::La => match &instruction.args[0] {
                 InstructionArg::Register(r) => {
-                    let addr = load_address(&instruction.args[1], &registers, &memory);
+                    let addr = load_address(&instruction.args[1], &registers, &mut memory);
                     registers.set(r, addr as Word);
                 }
                 _ => panic!("Invalid argument for LA instruction"),
             },
             InstructionKind::Move => match &instruction.args[0] {
                 InstructionArg::Register(r) => {
-                    registers.set(r, load_word(&instruction.args[1], &registers, &memory));
+                    registers.set(r, load_word(&instruction.args[1], &registers, &mut memory));
                 }
                 _ => panic!("Invalid argument for MOV instruction"),
             },
             InstructionKind::Add => {
-                arithmetic(&mut registers, &memory, &instruction.args, |a, b| a + b)
+                arithmetic(&mut registers, &mut memory, &instruction.args, |a, b| a + b)
             }
             InstructionKind::Sub => {
-                arithmetic(&mut registers, &memory, &instruction.args, |a, b| a - b)
+                arithmetic(&mut registers, &mut memory, &instruction.args, |a, b| a - b)
             }
             InstructionKind::Mul => {
-                arithmetic(&mut registers, &memory, &instruction.args, |a, b| a * b)
+                arithmetic(&mut registers, &mut memory, &instruction.args, |a, b| a * b)
             }
             InstructionKind::Div => {
-                arithmetic(&mut registers, &memory, &instruction.args, |a, b| a / b)
+                arithmetic(&mut registers, &mut memory, &instruction.args, |a, b| a / b)
             }
             InstructionKind::And => {
-                arithmetic(&mut registers, &memory, &instruction.args, |a, b| a & b)
+                arithmetic(&mut registers, &mut memory, &instruction.args, |a, b| a & b)
             }
             InstructionKind::Or => {
-                arithmetic(&mut registers, &memory, &instruction.args, |a, b| a | b)
+                arithmetic(&mut registers, &mut memory, &instruction.args, |a, b| a | b)
             }
             InstructionKind::Xor => {
-                arithmetic(&mut registers, &memory, &instruction.args, |a, b| a ^ b)
+                arithmetic(&mut registers, &mut memory, &instruction.args, |a, b| a ^ b)
             }
             InstructionKind::Nor => {
-                arithmetic(&mut registers, &memory, &instruction.args, |a, b| !(a | b))
+                arithmetic(&mut registers, &mut memory, &instruction.args, |a, b| {
+                    !(a | b)
+                })
             }
             InstructionKind::Slt => {
-                arithmetic(&mut registers, &memory, &instruction.args, |a, b| {
+                arithmetic(&mut registers, &mut memory, &instruction.args, |a, b| {
                     if a < b {
                         1
                     } else {
@@ -102,16 +105,22 @@ pub fn execute(program: Program, entrypoint: Address) {
                 })
             }
             InstructionKind::Sll => {
-                arithmetic(&mut registers, &memory, &instruction.args, |a, b| a << b)
+                arithmetic(&mut registers, &mut memory, &instruction.args, |a, b| {
+                    a << b
+                })
             }
             InstructionKind::Srl => {
-                arithmetic(&mut registers, &memory, &instruction.args, |a, b| a >> b)
+                arithmetic(&mut registers, &mut memory, &instruction.args, |a, b| {
+                    a >> b
+                })
             }
             InstructionKind::Sra => {
-                arithmetic(&mut registers, &memory, &instruction.args, |a, b| a >> b)
+                arithmetic(&mut registers, &mut memory, &instruction.args, |a, b| {
+                    a >> b
+                })
             }
             InstructionKind::Jr => {
-                let address = load_address(&instruction.args[0], &registers, &memory);
+                let address = load_address(&instruction.args[0], &registers, &mut memory);
                 log::debug!("Jumping to address {}", address);
             }
             InstructionKind::Syscall => {
@@ -124,8 +133,8 @@ pub fn execute(program: Program, entrypoint: Address) {
                     InstructionArg::Register(r) => r,
                     _ => panic!("Invalid argument for ADDI instruction"),
                 };
-                let src = load_word(&instruction.args[1], &registers, &memory);
-                let imm = load_word(&instruction.args[2], &registers, &memory);
+                let src = load_word(&instruction.args[1], &registers, &mut memory);
+                let imm = load_word(&instruction.args[2], &registers, &mut memory);
                 registers.set(dest, src + imm);
             }
             InstructionKind::Andi => {
@@ -133,22 +142,22 @@ pub fn execute(program: Program, entrypoint: Address) {
                     InstructionArg::Register(r) => r,
                     _ => panic!("Invalid argument for ANDI instruction"),
                 };
-                let src = load_word(&instruction.args[1], &registers, &memory);
-                let imm = load_word(&instruction.args[2], &registers, &memory);
+                let src = load_word(&instruction.args[1], &registers, &mut memory);
+                let imm = load_word(&instruction.args[2], &registers, &mut memory);
                 registers.set(dest, src & imm);
             }
             InstructionKind::Beq => {
-                let lhs = load_word(&instruction.args[0], &registers, &memory);
-                let rhs = load_word(&instruction.args[1], &registers, &memory);
-                let offset = load_word(&instruction.args[2], &registers, &memory);
+                let lhs = load_word(&instruction.args[0], &registers, &mut memory);
+                let rhs = load_word(&instruction.args[1], &registers, &mut memory);
+                let offset = load_word(&instruction.args[2], &registers, &mut memory);
                 if lhs == rhs {
                     pc += offset as Address;
                 }
             }
             InstructionKind::Bne => {
-                let lhs = load_word(&instruction.args[0], &registers, &memory);
-                let rhs = load_word(&instruction.args[1], &registers, &memory);
-                let offset = load_word(&instruction.args[2], &registers, &memory);
+                let lhs = load_word(&instruction.args[0], &registers, &mut memory);
+                let rhs = load_word(&instruction.args[1], &registers, &mut memory);
+                let offset = load_word(&instruction.args[2], &registers, &mut memory);
                 if lhs != rhs {
                     pc += offset as Address;
                 }
@@ -158,16 +167,16 @@ pub fn execute(program: Program, entrypoint: Address) {
                     InstructionArg::Register(r) => r,
                     _ => panic!("Invalid argument for LW instruction"),
                 };
-                let src = load_word(&instruction.args[1], &registers, &memory);
-                let offset = load_word(&instruction.args[2], &registers, &memory);
+                let src = load_word(&instruction.args[1], &registers, &mut memory);
+                let offset = load_word(&instruction.args[2], &registers, &mut memory);
                 let address = src + offset;
                 let data: [u8; size_of::<Word>()] = memory.read_const(address).unwrap();
                 let value = Word::from_le_bytes(data);
-                registers.set(dest, value);
+                registers.set(&dest, value);
             }
             InstructionKind::Sw => {
-                let src = load_word(&instruction.args[0], &registers, &memory);
-                let dest = load_word(&instruction.args[1], &registers, &memory);
+                let src = load_word(&instruction.args[0], &registers, &mut memory);
+                let dest = load_word(&instruction.args[1], &registers, &mut memory);
                 memory.write(dest as Address, &src.to_le_bytes()).unwrap();
             }
             InstructionKind::Lui => {
@@ -175,12 +184,12 @@ pub fn execute(program: Program, entrypoint: Address) {
                     InstructionArg::Register(r) => r,
                     _ => panic!("Invalid argument for LUI instruction"),
                 };
-                let imm = load_word(&instruction.args[1], &registers, &memory);
+                let imm = load_word(&instruction.args[1], &registers, &mut memory);
                 registers.set(dest, imm << 16);
             }
             InstructionKind::Nop => { /* Do nothing */ }
             InstructionKind::B => {
-                let offset = load_word(&instruction.args[0], &registers, &memory);
+                let offset = load_word(&instruction.args[0], &registers, &mut memory);
                 pc += offset as Address;
             }
             InstructionKind::J => {
@@ -197,7 +206,7 @@ pub fn execute(program: Program, entrypoint: Address) {
     log::debug!("{}", "====== Done ======".blue());
 }
 
-fn load_word(arg: &InstructionArg, registers: &Registers, memory: &Memory) -> Word {
+fn load_word(arg: &InstructionArg, registers: &Registers, memory: &mut Memory) -> Word {
     match arg {
         InstructionArg::Immediate(value) => *value as Word,
         InstructionArg::Register(register) => registers.get(register),
@@ -230,8 +239,12 @@ fn load_address(arg: &InstructionArg, registers: &Registers, memory: &Memory) ->
     }
 }
 
-fn arithmetic<F>(registers: &mut Registers, memory: &Memory, args: &[InstructionArg], operation: F)
-where
+fn arithmetic<F>(
+    registers: &mut Registers,
+    memory: &mut Memory,
+    args: &[InstructionArg],
+    operation: F,
+) where
     F: Fn(Word, Word) -> Word,
 {
     match &args[0] {
@@ -317,14 +330,15 @@ fn syscall(registers: &mut Registers, memory: &mut Memory) -> bool {
             let mut addr = a0 as Address;
             let mut buffer = [0u8; 128];
             let mut i = 0;
-            loop {
+            'print: loop {
                 let bytes_res = memory.read_buf(addr, &mut buffer);
-                let Some(bytes_read) = bytes_res else {
+                if bytes_res.is_none() {
+                    // If we read less than the buffer size, we reached the end of the memory section
                     panic!("Invalid address: 0x{:08x}", addr);
                 };
-                for &byte in &buffer[..bytes_read] {
+                for &byte in &buffer {
                     if byte == 0 {
-                        break;
+                        break 'print;
                     }
                     print!("{}", byte as char);
                     i += 1;
@@ -333,10 +347,7 @@ fn syscall(registers: &mut Registers, memory: &mut Memory) -> bool {
                         std::io::Write::flush(&mut std::io::stdout()).unwrap();
                     }
                 }
-                if bytes_read < buffer.len() {
-                    break; // If we read less than the buffer size, we reached the end of the memory section
-                }
-                addr += bytes_read as Address;
+                addr += buffer.len() as Address;
             }
             // Flush the remaining characters
             std::io::Write::flush(&mut std::io::stdout()).unwrap();
