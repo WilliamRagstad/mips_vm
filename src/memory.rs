@@ -60,6 +60,7 @@ type WriteHandler<T> = fn(Address, T);
 
 #[derive(Debug, Default)]
 pub struct MemorySection<T> {
+    name: String,
     protection: ProtectionLevel,
     start_address: Address,
     end_address: Address,
@@ -91,6 +92,7 @@ impl<T> MemorySection<T> {
     }
 }
 
+#[derive(Debug)]
 pub struct Memory {
     /// Labels with their names as the key and their address as the value.
     /// This is used to store the mapping of all address of labels in the original program.
@@ -139,6 +141,7 @@ impl Memory {
             panic!("Invalid program: no .text code blocks found");
         }
         let text: MemorySection<Instruction> = MemorySection {
+            name: ".text".to_string(),
             protection: ProtectionLevel::ReadExecute,
             start_address: program.text.blocks.first().unwrap().address,
             end_address: program
@@ -157,6 +160,7 @@ impl Memory {
 
         let data = if !program.data.empty() {
             let data = MemorySection {
+                name: ".data".to_string(),
                 protection: ProtectionLevel::ReadWrite,
                 start_address: program
                     .data
@@ -189,6 +193,7 @@ impl Memory {
         };
 
         let heap = MemorySection {
+            name: ".heap".to_string(),
             protection: ProtectionLevel::ReadWrite,
             start_address: 0x10000000,
             end_address: 0x10000000,
@@ -200,6 +205,7 @@ impl Memory {
         sections.insert(heap.start_address, heap);
 
         let stack = MemorySection {
+            name: ".stack".to_string(),
             protection: ProtectionLevel::ReadWrite,
             start_address: 0x7fffefff,
             end_address: 0x7fffefff,
@@ -500,7 +506,7 @@ impl Memory {
         if buf.len() < text_end + text_size {
             buf.resize(text_end + text_size, 0);
         }
-        const CODE: u32 = 0xCC00DDEE;
+        const CODE: u32 = 0xEEDD00CC;
         (text_start..text_end).for_each(|i| {
             buf[i] = (CODE >> (((i - text_start) % 4) * 8)) as u8;
         });

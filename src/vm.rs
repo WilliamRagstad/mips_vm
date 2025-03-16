@@ -20,6 +20,7 @@ impl VM {
         );
         let registers = Registers::default();
         let memory = Memory::load(program);
+        log::trace!("Memory: {:#?}", memory);
         Self { registers, memory }
     }
 

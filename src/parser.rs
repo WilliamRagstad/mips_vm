@@ -51,6 +51,7 @@ pub fn parse(input: &str) -> Option<Program> {
             };
 
             for pair in pairs {
+                log::trace!("Current address: 0x{:08x}", address);
                 match pair.as_rule() {
                     Rule::directive => {
                         let mut inner = pair.into_inner();
