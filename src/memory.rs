@@ -241,6 +241,16 @@ impl Memory {
         }
     }
 
+    /// Write to an memory-mapped I/O address location.
+    /// This is used to write to a memory-mapped I/O device.
+    fn mmio_write_to(section: &mut MemorySection<u8>, address: Address, value: &[u8]) {
+        if let Some(write_handler) = section.write_handler {
+            (0..value.len()).for_each(|i| {
+                write_handler(address + i as Address, value[i]);
+            });
+        }
+    }
+
     /// Read from a memory address location and return the data of the specified size
     pub fn read(&mut self, address: Address, size: usize) -> Option<Vec<u8>> {
         let section = self.find_section_mut(address)?;
@@ -255,9 +265,9 @@ impl Memory {
     pub fn read_buf(&mut self, address: Address, buf: &mut [u8]) -> Option<()> {
         let section = self.find_section_mut(address)?;
         let offset = (address - section.start_address) as usize;
-        Self::mmio_read_to(section, address, buf.len());
-        let len = buf.len();
-        buf[..len].copy_from_slice(&section.read()[offset..len]);
+        let size = buf.len();
+        Self::mmio_read_to(section, address, size);
+        buf[..size].copy_from_slice(&section.read()[offset..size]);
         Some(())
     }
 
@@ -272,6 +282,7 @@ impl Memory {
     pub fn write(&mut self, address: Address, value: &[u8]) -> Option<()> {
         let s = self.find_section_mut(address)?;
         let offset = (address - s.start_address) as usize;
+        Self::mmio_write_to(s, address, value);
         s.write()
             .get_mut(offset..offset + value.len())?
             .copy_from_slice(value);
