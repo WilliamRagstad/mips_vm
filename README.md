@@ -2,6 +2,19 @@
 
 This is a simple MIPS32 (I) virtual machine interpreting assembly.
 
+## Roadmap
+
+- [ ] Device drivers
+  - [X] Memory mapped I/O (MMIO)
+  - [ ] Interrupts
+- [ ] Exception handling
+- [ ] Multi-threading
+- [ ] JIT compilation
+- [ ] Debugger
+- [ ] Profiler
+
+On going tasks include performance optimizations, documentation, tests, examples and more.
+
 ## Example Usage
 
 ```nasm
