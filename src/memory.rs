@@ -549,7 +549,7 @@ impl Memory {
         let text_end = self.text.end_address as usize;
         let text_start = self.text.start_address as usize;
         let text_size = text_end - text_start + 1;
-        if buf.len() < text_end + text_size {
+        if buf.len() < ((text_end + text_size) / Instruction::size()) {
             buf.resize(text_end + text_size, 0);
         }
         const CODE: u32 = 0xEEDD00CC;
