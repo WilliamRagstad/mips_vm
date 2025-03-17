@@ -60,6 +60,7 @@ type WriteHandler<T> = fn(Address, T);
 
 #[derive(Debug, Default)]
 pub struct MemorySection<T> {
+    #[allow(dead_code)]
     name: String,
     protection: ProtectionLevel,
     pub start_address: Address,
@@ -150,6 +151,11 @@ impl Memory {
         let text_instructions = program.text_section.instructions_move();
         address += (text_instructions.len() * Instruction::size()) as Address;
         let text_end_address = address; // - Instruction::size() as Address;
+        assert!(
+            text_instructions.len()
+                == ((text_end_address - text_start_address) / Instruction::size() as u32) as usize
+        );
+
         let text: MemorySection<Instruction> = MemorySection {
             name: ".text".to_string(),
             protection: ProtectionLevel::ReadExecute,
@@ -174,6 +180,7 @@ impl Memory {
                 .collect();
             address += data_raw_initialized.len() as Address;
             let data_end_address = address; // - 1;
+            assert!(data_raw_initialized.len() == (data_end_address - data_start_address) as usize);
 
             let data = MemorySection {
                 name: ".data".to_string(),
@@ -302,7 +309,11 @@ impl Memory {
         let offset = (address - section.start_address) as usize;
         let size = buf.len();
         Self::mmio_read_to(section, address, size);
-        buf[..size].copy_from_slice(&section.read()[offset..size]);
+        let src = &section.read()[offset..offset + size];
+        if src.is_empty() {
+            return Err(MemoryError::InvalidSize);
+        }
+        buf[..size].copy_from_slice(src);
         Ok(())
     }
 
@@ -310,6 +321,31 @@ impl Memory {
         let mut data = [0; N];
         self.read_buf(address, &mut data)?;
         Ok(data)
+    }
+
+    pub fn read_max(&mut self, address: Address, max_size: usize) -> Result<Vec<u8>> {
+        let section = self.find_section_mut(address)?;
+        let size = max_size.min((section.end_address - address) as usize);
+        self.read(address, size)
+    }
+
+    pub fn read_buf_max(&mut self, address: Address, buf: &mut [u8]) -> Result<usize> {
+        let section = self.find_section_mut(address)?;
+        let size = buf.len().min((section.end_address - address) as usize);
+        self.read_buf(address, &mut buf[..size])?;
+        Ok(size)
+    }
+
+    pub fn read_word(&mut self, address: Address) -> Result<Word> {
+        let mut data = [0; size_of::<Word>()];
+        self.read_buf(address, &mut data)?;
+        Ok(Word::from_le_bytes(data))
+    }
+
+    pub fn read_address(&mut self, address: Address) -> Result<Address> {
+        let mut data = [0; size_of::<Address>()];
+        self.read_buf(address, &mut data)?;
+        Ok(Address::from_le_bytes(data))
     }
 
     /// Write to a memory address location.
@@ -334,11 +370,10 @@ impl Memory {
         if self.text.start_address <= address && address <= self.text.end_address {
             // TODO: Improve finding the instruction by address performance
             let index = (address - self.text.start_address) as usize / Instruction::size();
-            return self
-                .text
+            self.text
                 .execute()
                 .get(index)
-                .ok_or(MemoryError::InvalidInstruction);
+                .ok_or(MemoryError::InvalidInstruction)
             // self.text
             //     .execute()
             //     .iter()

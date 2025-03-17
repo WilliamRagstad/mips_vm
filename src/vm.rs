@@ -1,7 +1,7 @@
 use colorful::Colorful;
 
 use crate::{
-    memory::{self, Memory},
+    memory::Memory,
     program::{Address, Instruction, InstructionArg, InstructionKind, Program, Word, LABEL_COLOR},
     registers::{Register, Registers},
 };
@@ -161,8 +161,7 @@ impl VM {
                     let src = self.load_word(&instruction.args[1]);
                     let offset = self.load_word(&instruction.args[2]);
                     let address = src + offset;
-                    let data: [u8; size_of::<Word>()] = self.memory.read_const(address).unwrap();
-                    let value = Word::from_le_bytes(data);
+                    let value = self.memory.read_word(address).unwrap();
                     self.registers.set(dest, value);
                 }
                 InstructionKind::Sw => {
@@ -206,17 +205,13 @@ impl VM {
             InstructionArg::RegisterOffset(register, offset) => {
                 let base = self.registers.get(register);
                 let address = base as Address + *offset as Address;
-                let result: memory::Result<[u8; size_of::<Word>()]> =
-                    self.memory.read_const(address);
-                let Ok(data) = result else {
-                    panic!("Invalid address: 0x{:08x}", address);
-                };
-                Word::from_le_bytes(data)
+                self.memory.read_word(address).unwrap_or_else(|err| {
+                    panic!("Invalid address: 0x{:08x}: {:?}", address, err);
+                })
             }
             InstructionArg::Label(label) => {
                 let address = self.memory.address_of_label(label).unwrap();
-                let data: [u8; size_of::<Word>()] = self.memory.read_const(address).unwrap();
-                Word::from_le_bytes(data)
+                self.memory.read_word(address).unwrap()
             }
         }
     }
@@ -278,9 +273,9 @@ impl VM {
                 let mut buffer = [0u8; BUFFER_SIZE];
                 let mut i = 0;
                 'print: loop {
-                    match self.memory.read_buf(addr, &mut buffer) {
-                        Ok(()) => {
-                            for &byte in &buffer {
+                    match self.memory.read_buf_max(addr, &mut buffer) {
+                        Ok(n) => {
+                            for &byte in &buffer[..n] {
                                 if byte == 0 {
                                     break 'print;
                                 }
@@ -291,10 +286,13 @@ impl VM {
                                     std::io::Write::flush(&mut std::io::stdout()).unwrap();
                                 }
                             }
+                            if n < BUFFER_SIZE {
+                                // If we read less than the buffer size, we reached the end of the memory section
+                                break 'print;
+                            }
                             addr += buffer.len() as Address;
                         }
                         Err(err) => {
-                            // If we read less than the buffer size, we reached the end of the memory section
                             panic!(
                                 "Invalid reading {} bytes at address 0x{:08x}: {:?}",
                                 BUFFER_SIZE, addr, err
