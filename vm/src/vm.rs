@@ -398,7 +398,7 @@ impl From<Word> for Syscall {
 
 #[cfg(test)]
 mod test_interpreter {
-    use crate::{parse, vm::VM};
+    use crate::{parser::parse, vm::VM};
 
     #[test]
     fn hello_world() {

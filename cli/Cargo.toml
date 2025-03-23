@@ -7,5 +7,4 @@ edition = "2021"
 colorful = { workspace = true }
 env_logger = { workspace = true }
 log = { workspace = true }
-pest = "2.7.15"
-pest_derive = "2.7.15"
+mips_vm = { path = "../vm" }

@@ -205,13 +205,19 @@ dependencies = [
  "colorful",
  "env_logger",
  "log",
- "pest",
- "pest_derive",
+ "mips_vm",
 ]
 
 [[package]]
 name = "mips_vm"
 version = "0.1.0"
+dependencies = [
+ "colorful",
+ "env_logger",
+ "log",
+ "pest",
+ "pest_derive",
+]
 
 [[package]]
 name = "once_cell"

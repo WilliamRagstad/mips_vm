@@ -240,7 +240,7 @@ fn unescape_string(s: &str) -> String {
 
 #[cfg(test)]
 mod test_parser {
-    use crate::parse;
+    use super::parse;
 
     #[test]
     fn hello_world() {

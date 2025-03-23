@@ -1,11 +1,4 @@
-use parser::parse;
-use vm::VM;
-
-pub mod memory;
-pub mod parser;
-pub mod program;
-pub mod registers;
-pub mod vm;
+use mips_vm::{parser::parse, vm::VM};
 
 fn main() {
     log_init();
