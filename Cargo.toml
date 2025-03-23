@@ -1,11 +1,8 @@
-[package]
-name = "mips_vm"
-version = "0.1.0"
-edition = "2021"
+[workspace]
+members = ["cli", "vm"]
+resolver = "2"
 
-[dependencies]
+[workspace.dependencies]
 colorful = "0.3.2"
 env_logger = "0.11.7"
 log = "0.4.26"
-pest = "2.7.15"
-pest_derive = "2.7.15"

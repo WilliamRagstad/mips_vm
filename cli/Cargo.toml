@@ -1,0 +1,11 @@
+[package]
+name = "mips_cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+colorful = { workspace = true }
+env_logger = { workspace = true }
+log = { workspace = true }
+pest = "2.7.15"
+pest_derive = "2.7.15"
