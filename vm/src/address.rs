@@ -5,35 +5,105 @@ use std::{
 
 use colorful::{Color, Colorful};
 
-/// Represents an address in a MIPS program.
+/// Represents a memory address in a MIPS32 virtual machine.
+///
+/// Memory addresses are 32-bit values. This struct provides various
+/// utility methods to work with these addresses, including conversion to and
+/// from little-endian byte arrays, calculating page numbers, and formatting
+/// the address for display.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
 pub struct Address(u32);
 
 impl Address {
+    /// Creates a new `Address` from a 32-bit unsigned integer.
+    ///
+    /// # Arguments
+    ///
+    /// * `address` - A 32-bit unsigned integer representing the memory address.
+    ///
+    /// # Returns
+    ///
+    /// A new `Address` instance.
     pub fn new(address: u32) -> Address {
         Address(address)
     }
 
+    /// Returns the 32-bit unsigned integer value of the address.
+    ///
+    /// # Returns
+    ///
+    /// The 32-bit unsigned integer value of the address.
+    pub fn unwrap(&self) -> u32 {
+        self.0
+    }
+
+    /// Calculates the page number of the address.
+    ///
+    /// # Returns
+    ///
+    /// The page number of the address, assuming a page size of 4KB (12 bits).
+    pub fn page_number(&self) -> u32 {
+        self.0 >> 12
+    }
+
+    /// Calculates the offset of the address within the page.
+    ///
+    /// # Returns
+    ///
+    /// The offset of the address within the page, assuming a page size of 4KB (12 bits).
+    pub fn page_offset(&self) -> u32 {
+        self.0 & 0xFFF
+    }
+
+    /// Creates an `Address` from a little-endian byte array.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytes` - A 4-element array of bytes in little-endian order.
+    ///
+    /// # Returns
+    ///
+    /// A new `Address` instance.
     pub fn from_le_bytes(bytes: [u8; 4]) -> Address {
         Address::new(u32::from_le_bytes(bytes))
     }
 
+    /// Converts the address to a little-endian byte array.
+    ///
+    /// # Returns
+    ///
+    /// A 4-element array of bytes representing the address in little-endian order.
     pub fn to_le_bytes(&self) -> [u8; 4] {
         self.0.to_le_bytes()
     }
 
+    /// Returns a new `Address` offset by a given number of bytes.
+    ///
+    /// # Arguments
+    ///
+    /// * `offset` - The number of bytes to offset the address by. Can be negative.
+    ///
+    /// # Returns
+    ///
+    /// A new `Address` instance offset by the given number of bytes.
     pub fn offset(&self, offset: i32) -> Address {
         Address((self.0 as i32 + offset) as u32)
     }
 
-    pub fn value(&self) -> u32 {
-        self.0
-    }
-
+    /// Returns a string representation of the address in hexadecimal format.
+    ///
+    /// # Returns
+    ///
+    /// A string representing the address in hexadecimal format.
     pub fn show(&self) -> String {
         format!("0x{:08x}", self.0)
     }
 
+    /// Returns a colored string representation of the address in hexadecimal format.
+    ///
+    /// # Returns
+    ///
+    /// A colored string representing the address in hexadecimal format.
     pub fn show_color(&self) -> String {
         format!("0x{:08x}", self.0)
             .color(Color::LightBlue)

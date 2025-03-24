@@ -86,7 +86,7 @@ impl VM {
                 InstructionKind::La => match &instruction.args[0] {
                     InstructionArg::Register(r) => {
                         let addr = self.load_address(&instruction.args[1]);
-                        self.registers.set(r, addr.value() as Word);
+                        self.registers.set(r, addr.unwrap() as Word);
                     }
                     _ => panic!("Invalid argument for LA instruction"),
                 },
@@ -189,7 +189,7 @@ impl VM {
                 }
                 InstructionKind::Jal => {
                     let address = self.load_address(&instruction.args[0]);
-                    self.registers.set(&Register::Ra, pc.value() + 4);
+                    self.registers.set(&Register::Ra, pc.unwrap() + 4);
                     pc = address;
                 }
             }
@@ -339,7 +339,7 @@ impl VM {
             Syscall::Sbrk => {
                 let a0 = self.load_word(&InstructionArg::Register(Register::A0));
                 let address = self.memory.heap_allocate(a0 as usize).unwrap();
-                self.registers.set(&Register::V0, address.value());
+                self.registers.set(&Register::V0, address.unwrap());
             }
             Syscall::Exit | Syscall::Exit2 => {
                 log::debug!("Exiting program...");

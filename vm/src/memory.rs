@@ -59,6 +59,8 @@ impl ProtectionLevel {
 type ReadHandler<T> = fn(Address) -> T;
 type WriteHandler<T> = fn(Address, T);
 
+/// Memory paging is a memory management scheme that eliminates the need for
+/// contiguous allocation of physical memory.
 #[derive(Debug, Default)]
 pub struct MemorySection<T> {
     #[allow(dead_code)]
@@ -154,8 +156,7 @@ impl Memory {
         let text_end_address = address; // - Instruction::size().into();
         assert!(
             text_instructions.len()
-                == ((text_end_address.value() - text_start_address.value())
-                    / Instruction::size() as u32) as usize
+                == ((text_end_address - text_start_address) / Instruction::size() as u32) as usize
         );
 
         let text: MemorySection<Instruction> = MemorySection {
@@ -540,16 +541,16 @@ impl Memory {
             if section.data.is_empty() {
                 continue;
             }
-            let start = section.start_address.value() as usize;
-            let end = section.end_address.value() as usize;
+            let start = section.start_address.unwrap() as usize;
+            let end = section.end_address.unwrap() as usize;
             if buf.len() < end {
                 buf.resize(end, 0);
             }
             buf[start..end].copy_from_slice(section.read());
         }
         // Fill in text section with 0xFF
-        let text_end = self.text.end_address.value() as usize;
-        let text_start = self.text.start_address.value() as usize;
+        let text_end = self.text.end_address.unwrap() as usize;
+        let text_start = self.text.start_address.unwrap() as usize;
         let text_size = text_end - text_start + 1;
         if buf.len() < ((text_end + text_size) / Instruction::size()) {
             buf.resize(text_end + text_size, 0);
