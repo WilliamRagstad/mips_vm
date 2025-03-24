@@ -1,4 +1,3 @@
-use crate::address::Address;
 use crate::registers::Register;
 use colorful::{Color, Colorful};
 
