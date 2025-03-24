@@ -3,8 +3,8 @@ use mips_vm::{parser::parse, vm::VM};
 
 /// Simple program to run MIPS VM
 #[derive(Parser)]
-#[command(name = "mips_cli")]
-#[command(about = "A simple MIPS VM CLI", long_about = None)]
+#[command(name = "mips", bin_name = "mips")]
+#[command(about = "A simple MIPS VM", long_about = None)]
 struct Cli {
     /// Input file to run
     input: String,
