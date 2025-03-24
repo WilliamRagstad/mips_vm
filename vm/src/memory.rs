@@ -1,6 +1,7 @@
 use std::{collections::HashMap, mem::size_of};
 
-use crate::program::{Address, Instruction, Program, Word};
+use crate::address::Address;
+use crate::program::{Instruction, Program, Word};
 
 #[derive(Debug, PartialEq)]
 pub enum MemoryError {
@@ -133,7 +134,7 @@ impl Memory {
     /// - `.heap` section: read-write and is used for dynamic memory allocation from the dynamically allocated memory. (**Second-to-highest addresses**)
     /// - `.stack` section: read-write and is used for function calls and local variables from the stack. (**Highest addresses**)
     pub fn load(program: Program) -> Self {
-        let mut address: Address = 0;
+        let mut address: Address = 0.into();
         let mut labels = HashMap::new();
         let mut sections = HashMap::new();
 
@@ -146,14 +147,15 @@ impl Memory {
             if !block.label.is_empty() {
                 labels.insert(block.label.clone(), text_label_address);
             }
-            text_label_address += (block.instructions.len() * Instruction::size()) as Address;
+            text_label_address += block.instructions.len() * Instruction::size();
         }
         let text_instructions = program.text_section.instructions_move();
-        address += (text_instructions.len() * Instruction::size()) as Address;
-        let text_end_address = address; // - Instruction::size() as Address;
+        address += text_instructions.len() * Instruction::size();
+        let text_end_address = address; // - Instruction::size().into();
         assert!(
             text_instructions.len()
-                == ((text_end_address - text_start_address) / Instruction::size() as u32) as usize
+                == ((text_end_address.value() - text_start_address.value())
+                    / Instruction::size() as u32) as usize
         );
 
         let text: MemorySection<Instruction> = MemorySection {
@@ -172,13 +174,13 @@ impl Memory {
             let mut data_label_address: Address = data_start_address;
             for data in &data_initialized {
                 labels.insert(data.label.clone(), data_label_address);
-                data_label_address += data.data.len() as Address;
+                data_label_address += data.data.len();
             }
             let data_raw_initialized: Vec<u8> = data_initialized
                 .into_iter()
                 .flat_map(|rd| rd.data)
                 .collect();
-            address += data_raw_initialized.len() as Address;
+            address += data_raw_initialized.len();
             let data_end_address = address; // - 1;
             assert!(data_raw_initialized.len() == (data_end_address - data_start_address) as usize);
 
@@ -200,8 +202,8 @@ impl Memory {
         let heap = MemorySection {
             name: ".heap".to_string(),
             protection: ProtectionLevel::ReadWrite,
-            start_address: 0x10000000,
-            end_address: 0x10000000,
+            start_address: 0x10000000.into(),
+            end_address: 0x10000000.into(),
             data: Vec::new(),
             read_handler: None,
             write_handler: None,
@@ -212,8 +214,8 @@ impl Memory {
         let stack = MemorySection {
             name: ".stack".to_string(),
             protection: ProtectionLevel::ReadWrite,
-            start_address: 0x7fffefff,
-            end_address: 0x7fffefff,
+            start_address: 0x7fffefff.into(),
+            end_address: 0x7fffefff.into(),
             data: Vec::new(),
             read_handler: None,
             write_handler: None,
@@ -271,7 +273,7 @@ impl Memory {
         if let Some(read_handler) = section.read_handler {
             let offset = (address - section.start_address) as usize;
             for i in 0..size {
-                section.write()[offset + i] = read_handler(address + i as Address);
+                section.write()[offset + i] = read_handler(address + i);
             }
         }
     }
@@ -281,7 +283,7 @@ impl Memory {
     fn mmio_write_to(section: &mut MemorySection<u8>, address: Address, value: &[u8]) {
         if let Some(write_handler) = section.write_handler {
             (0..value.len()).for_each(|i| {
-                write_handler(address + i as Address, value[i]);
+                write_handler(address + i, value[i]);
             });
         }
     }
@@ -289,7 +291,7 @@ impl Memory {
     /// Read from a memory address location and return the data of the specified size
     pub fn read(&mut self, address: Address, size: usize) -> Result<Vec<u8>> {
         let section = self.find_section_mut(address)?;
-        if address + size as Address > section.end_address {
+        if address + size > section.end_address {
             return Err(MemoryError::OutOfBounds); // Out of bounds
         }
         let offset = (address - section.start_address) as usize;
@@ -303,7 +305,7 @@ impl Memory {
 
     pub fn read_buf(&mut self, address: Address, buf: &mut [u8]) -> Result<()> {
         let section = self.find_section_mut(address)?;
-        if address + buf.len() as Address > section.end_address {
+        if address + buf.len() > section.end_address {
             return Err(MemoryError::OutOfBounds); // Out of bounds
         }
         let offset = (address - section.start_address) as usize;
@@ -352,7 +354,7 @@ impl Memory {
     /// The value is written in between `(start_address + offset)` to `(start_address + offset + value.len())`.
     pub fn write(&mut self, address: Address, value: &[u8]) -> Result<()> {
         let section = self.find_section_mut(address)?;
-        if address + value.len() as Address > section.end_address {
+        if address + value.len() > section.end_address {
             return Err(MemoryError::OutOfBounds); // Out of bounds
         }
         let offset = (address - section.start_address) as usize;
@@ -453,12 +455,12 @@ impl Memory {
     pub fn stack_push_word(&mut self, value: Word) -> Result<()> {
         const WORD_SIZE: usize = size_of::<Word>();
         // Check if the stack section is colliding with the heap section
-        if self.stack().start_address - WORD_SIZE as Address <= self.heap().end_address {
+        if self.stack().start_address - WORD_SIZE <= self.heap().end_address {
             return Err(MemoryError::InvalidStack);
         }
         let bytes: [u8; WORD_SIZE] = value.to_le_bytes();
         self.stack_mut().write().extend_from_slice(&bytes);
-        self.stack_mut().start_address -= WORD_SIZE as Address;
+        self.stack_mut().start_address -= WORD_SIZE;
         Ok(())
     }
 
@@ -485,12 +487,12 @@ impl Memory {
     pub fn stack_push_address(&mut self, value: Address) -> Result<()> {
         const ADDRESS_SIZE: usize = size_of::<Address>();
         // Check if the stack section is colliding with the heap section
-        if self.stack().start_address - ADDRESS_SIZE as Address <= self.heap().end_address {
+        if self.stack().start_address - ADDRESS_SIZE <= self.heap().end_address {
             return Err(MemoryError::InvalidStack);
         }
         let bytes: [u8; ADDRESS_SIZE] = value.to_le_bytes();
         self.stack_mut().write().extend_from_slice(&bytes);
-        self.stack_mut().start_address -= ADDRESS_SIZE as Address;
+        self.stack_mut().start_address -= ADDRESS_SIZE;
         Ok(())
     }
 
@@ -516,11 +518,11 @@ impl Memory {
     /// - `None` if the allocation is unsuccessful, due to out-of-memory or heap-stack collision.
     pub fn heap_allocate(&mut self, size: usize) -> Result<Address> {
         // Check if the heap section is colliding with the stack section
-        if self.heap().end_address + size as Address >= self.stack().start_address {
+        if self.heap().end_address + size >= self.stack().start_address {
             return Err(MemoryError::InvalidHeap);
         }
         let address = self.heap_mut().end_address;
-        self.heap_mut().end_address += size as Address;
+        self.heap_mut().end_address += size;
         Ok(address)
     }
 
@@ -538,16 +540,16 @@ impl Memory {
             if section.data.is_empty() {
                 continue;
             }
-            let start = section.start_address as usize;
-            let end = section.end_address as usize;
+            let start = section.start_address.value() as usize;
+            let end = section.end_address.value() as usize;
             if buf.len() < end {
                 buf.resize(end, 0);
             }
             buf[start..end].copy_from_slice(section.read());
         }
         // Fill in text section with 0xFF
-        let text_end = self.text.end_address as usize;
-        let text_start = self.text.start_address as usize;
+        let text_end = self.text.end_address.value() as usize;
+        let text_start = self.text.start_address.value() as usize;
         let text_size = text_end - text_start + 1;
         if buf.len() < ((text_end + text_size) / Instruction::size()) {
             buf.resize(text_end + text_size, 0);

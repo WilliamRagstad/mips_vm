@@ -1,3 +1,4 @@
+pub mod address;
 pub mod memory;
 pub mod parser;
 pub mod program;

@@ -1,8 +1,9 @@
 use colorful::Colorful;
 
+use crate::address::Address;
 use crate::{
     memory::Memory,
-    program::{Address, Instruction, InstructionArg, InstructionKind, Program, Word, LABEL_COLOR},
+    program::{Instruction, InstructionArg, InstructionKind, Program, Word, LABEL_COLOR},
     registers::{Register, Registers},
 };
 
@@ -54,7 +55,7 @@ impl VM {
         'execution: loop {
             if let Ok(new_block) = self.memory.label_at_address(pc) {
                 log::debug!(
-                    "Executing block at 0x{:08x} {}...",
+                    "Executing block at {} {}...",
                     pc,
                     new_block.clone().color(LABEL_COLOR)
                 );
@@ -62,16 +63,16 @@ impl VM {
             let instruction = self
                 .memory
                 .execute(pc)
-                .unwrap_or_else(|_| panic!("No instruction found at address 0x{:08x}", pc))
+                .unwrap_or_else(|_| panic!("No instruction found at address {}", pc))
                 .clone();
             log::debug!(
-                "Executing instruction at 0x{:08x}: {}",
+                "Executing instruction at {}: {}",
                 pc,
                 instruction.show_color()
             );
 
             // Move pointer to the next instruction in advance
-            pc += Instruction::size() as Address;
+            pc += Instruction::size();
 
             // Process the instruction
             match instruction.kind {
@@ -85,7 +86,7 @@ impl VM {
                 InstructionKind::La => match &instruction.args[0] {
                     InstructionArg::Register(r) => {
                         let addr = self.load_address(&instruction.args[1]);
-                        self.registers.set(r, addr as Word);
+                        self.registers.set(r, addr.value() as Word);
                     }
                     _ => panic!("Invalid argument for LA instruction"),
                 },
@@ -142,7 +143,7 @@ impl VM {
                     let rhs = self.load_word(&instruction.args[1]);
                     let offset = self.load_word(&instruction.args[2]);
                     if lhs == rhs {
-                        pc += offset as Address;
+                        pc += offset;
                     }
                 }
                 InstructionKind::Bne => {
@@ -150,7 +151,7 @@ impl VM {
                     let rhs = self.load_word(&instruction.args[1]);
                     let offset = self.load_word(&instruction.args[2]);
                     if lhs != rhs {
-                        pc += offset as Address;
+                        pc += offset;
                     }
                 }
                 InstructionKind::Lw => {
@@ -158,7 +159,7 @@ impl VM {
                         InstructionArg::Register(r) => r,
                         _ => panic!("Invalid argument for LW instruction"),
                     };
-                    let src = self.load_word(&instruction.args[1]);
+                    let src = Address::new(self.load_word(&instruction.args[1]));
                     let offset = self.load_word(&instruction.args[2]);
                     let address = src + offset;
                     let value = self.memory.read_word(address).unwrap();
@@ -166,10 +167,8 @@ impl VM {
                 }
                 InstructionKind::Sw => {
                     let src = self.load_word(&instruction.args[0]);
-                    let dest = self.load_word(&instruction.args[1]);
-                    self.memory
-                        .write(dest as Address, &src.to_le_bytes())
-                        .unwrap();
+                    let dest = Address::new(self.load_word(&instruction.args[1]));
+                    self.memory.write(dest, &src.to_le_bytes()).unwrap();
                 }
                 InstructionKind::Lui => {
                     let dest = match &instruction.args[0] {
@@ -182,7 +181,7 @@ impl VM {
                 InstructionKind::Nop => { /* Do nothing */ }
                 InstructionKind::B => {
                     let offset = self.load_word(&instruction.args[0]);
-                    pc += offset as Address;
+                    pc += offset;
                 }
                 InstructionKind::J => {
                     let address = self.load_address(&instruction.args[0]);
@@ -190,7 +189,7 @@ impl VM {
                 }
                 InstructionKind::Jal => {
                     let address = self.load_address(&instruction.args[0]);
-                    self.registers.set(&Register::Ra, pc + 4);
+                    self.registers.set(&Register::Ra, pc.value() + 4);
                     pc = address;
                 }
             }
@@ -203,10 +202,10 @@ impl VM {
             InstructionArg::Immediate(value) => *value as Word,
             InstructionArg::Register(register) => self.registers.get(register),
             InstructionArg::RegisterOffset(register, offset) => {
-                let base = self.registers.get(register);
-                let address = base as Address + *offset as Address;
+                let base = Address::new(self.registers.get(register));
+                let address = base + *offset;
                 self.memory.read_word(address).unwrap_or_else(|err| {
-                    panic!("Invalid address: 0x{:08x}: {:?}", address, err);
+                    panic!("Invalid address: {}: {:?}", address, err);
                 })
             }
             InstructionArg::Label(label) => {
@@ -218,11 +217,11 @@ impl VM {
 
     fn load_address(&self, arg: &InstructionArg) -> Address {
         match arg {
-            InstructionArg::Immediate(value) => *value as Address,
-            InstructionArg::Register(register) => self.registers.get(register),
+            InstructionArg::Immediate(value) => Address::new(*value as u32),
+            InstructionArg::Register(register) => Address::new(self.registers.get(register)),
             InstructionArg::RegisterOffset(register, offset) => {
-                let base = self.registers.get(register);
-                base as Address + *offset as Address
+                let base = Address::new(self.registers.get(register));
+                base + *offset
             }
             InstructionArg::Label(label) => self.memory.address_of_label(label).unwrap(),
         }
@@ -268,8 +267,8 @@ impl VM {
             Syscall::PrintString => {
                 const FLUSH_THRESHOLD: usize = 64;
                 const BUFFER_SIZE: usize = 128;
-                let a0 = self.load_word(&InstructionArg::Register(Register::A0));
-                let mut addr = a0 as Address;
+                let a0 = Address::new(self.load_word(&InstructionArg::Register(Register::A0)));
+                let mut addr = a0;
                 let mut buffer = [0u8; BUFFER_SIZE];
                 let mut i = 0;
                 'print: loop {
@@ -290,11 +289,11 @@ impl VM {
                                 // If we read less than the buffer size, we reached the end of the memory section
                                 break 'print;
                             }
-                            addr += buffer.len() as Address;
+                            addr += buffer.len();
                         }
                         Err(err) => {
                             panic!(
-                                "Invalid reading {} bytes at address 0x{:08x}: {:?}",
+                                "Invalid reading {} bytes at address {}: {:?}",
                                 BUFFER_SIZE, addr, err
                             );
                         }
@@ -328,19 +327,19 @@ impl VM {
                 self.registers.set(&Register::V0, value);
             }
             Syscall::ReadString => {
-                let a0 = self.load_word(&InstructionArg::Register(Register::A0)); // address of the buffer
+                let a0 = Address::new(self.load_word(&InstructionArg::Register(Register::A0))); // address of the buffer
                 let a1 = self.load_word(&InstructionArg::Register(Register::A1)); // maximum number of characters to read
                                                                                   // TODO: Read at most `a1` characters from stdin
                 let mut input = String::with_capacity(a1 as usize);
                 std::io::stdin().read_line(&mut input).unwrap();
                 self.memory
-                    .write(a0 as Address, &input.as_bytes()[..a1 as usize])
+                    .write(a0, &input.as_bytes()[..a1 as usize])
                     .unwrap();
             }
             Syscall::Sbrk => {
                 let a0 = self.load_word(&InstructionArg::Register(Register::A0));
                 let address = self.memory.heap_allocate(a0 as usize).unwrap();
-                self.registers.set(&Register::V0, address as Word);
+                self.registers.set(&Register::V0, address.value());
             }
             Syscall::Exit | Syscall::Exit2 => {
                 log::debug!("Exiting program...");

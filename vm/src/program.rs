@@ -1,8 +1,6 @@
+use crate::address::Address;
 use crate::registers::Register;
 use colorful::{Color, Colorful};
-
-/// Represents an address in a MIPS program.
-pub type Address = u32;
 
 /// Represents a 32 bits long word in a MIPS program.
 pub type Word = u32;
