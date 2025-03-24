@@ -402,7 +402,7 @@ mod test_interpreter {
 
     #[test]
     fn hello_world() {
-        let input = include_str!("../examples/hello_world.asm");
+        let input = include_str!("../../examples/hello_world.asm");
         let prog = parse(input);
         assert_ne!(prog, None);
         let program = prog.unwrap();
