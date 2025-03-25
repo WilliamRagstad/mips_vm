@@ -289,7 +289,7 @@ impl Memory {
                 .flat_map(|rd| rd.data)
                 .collect();
             address += data_raw_initialized.len();
-            let data_end_address = address; // - 1;
+            let data_end_address = address + 1; // - 1;
             assert!(data_raw_initialized.len() == (data_end_address - data_start_address) as usize);
 
             let data = MemorySegment {
