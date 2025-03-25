@@ -191,6 +191,23 @@ pub struct MemorySegment<T> {
     write_handler: Option<WriteHandler<T>>,
 }
 
+/// The memory of the MIPS VM is divided into several sections:
+/// - `.text` section: read-only and executable (code) from the program's instructions.
+/// - `.data` section: read-write and typically contains global variables from the initialized data.
+/// - `.bss` section: read-write and is used for uninitialized data.
+/// - `.heap` section: read-write and is used for dynamic memory allocation from the dynamically allocated memory.
+/// - `.stack` section: read-write and is used for function calls and local variables.
+///
+/// The memory is also divided into pages, with each page containing a fixed number of bytes.
+/// A page table is used to store the mapping between virtual addresses and physical addresses,
+/// stored in memory struct and is managed by the operating system.
+///
+/// Check out the references used:
+/// - [MIPS Memory Map 1](https://training.mips.com/basic_mips/PDF/Memory_Map.pdf)
+/// - [MIPS Memory Map 2](https://wilkinsonj.people.charleston.edu/mem-map.html)
+/// - [MIPS memory layout](https://www.it.uu.se/education/course/homepage/os/vt18/module-0/mips-and-mars/mips-memory-layout/)
+/// - [Memory Management Unit](https://en.wikipedia.org/wiki/Memory_management_unit)
+/// - [Memory Management](https://en.wikipedia.org/wiki/Memory_management)
 #[derive(Debug)]
 pub struct Memory {
     page_table: PageTable,
