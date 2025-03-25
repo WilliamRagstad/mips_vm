@@ -1,6 +1,8 @@
 use clap::Parser;
 use mips_vm::{parser::parse, vm::VM};
 
+mod mmio;
+
 /// Simple program to run MIPS VM
 #[derive(Parser)]
 #[command(name = "mips", bin_name = "mips")]
