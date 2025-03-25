@@ -41,14 +41,12 @@ impl VM {
         // Or return the first address of the text section
     }
 
+    pub fn memory(&self) -> &Memory {
+        &self.memory
+    }
+
     pub fn execute(&mut self, entrypoint: Address) {
         log::debug!("{}", "======= EXECUTION =======".blue());
-
-        // Dump the self.memory before execution
-        let dump = self.memory.dump();
-        let cwd = std::env::current_dir().unwrap();
-        let dump_path = cwd.join("init_dump.bin");
-        std::fs::write(&dump_path, dump).unwrap();
 
         // Program counter (instruction pointer): address of the next instruction to execute
         let mut pc = entrypoint;

@@ -10,6 +10,9 @@ mod mmio;
 struct Cli {
     /// Input file to run
     input: String,
+    /// Optional dump file path
+    #[arg(short, long)]
+    dump_file: Option<String>,
 }
 
 fn main() {
@@ -19,6 +22,13 @@ fn main() {
     if let Some(program) = parse(&input) {
         let mmio = Vec::new();
         let mut vm = VM::new(program, mmio);
+
+        if let Some(dump_file) = args.dump_file {
+            let dump = vm.memory().dump();
+            let dump_path = std::path::PathBuf::from(dump_file);
+            std::fs::write(&dump_path, dump).unwrap();
+        }
+
         vm.execute(vm.entrypoint().expect("No entrypoint found"));
     }
 }

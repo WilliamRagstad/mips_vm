@@ -711,7 +711,10 @@ impl Memory {
         let _ = self.write(address, &(vec![0; size]));
     }
 
+    /// Dump all the memory contents into a vector of bytes.
+    /// This is used for debugging purposes.
     pub fn dump(&self) -> Vec<u8> {
+        log::trace!("Dumping memory contents...");
         let mut buf = Vec::new();
         // Iterate through all allocated memory pages
         for (page_number, page) in &self.page_table.pages {
