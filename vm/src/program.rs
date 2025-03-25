@@ -93,7 +93,7 @@ impl DataSection {
         self.initialized.iter().collect()
     }
 
-    pub fn initialized_move(self) -> Vec<StaticData> {
+    pub fn initialized_static_move(self) -> Vec<StaticData> {
         self.initialized
     }
 

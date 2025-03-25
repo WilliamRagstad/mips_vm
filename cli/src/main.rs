@@ -15,7 +15,8 @@ fn main() {
     let args = Cli::parse();
     let input = std::fs::read_to_string(args.input).expect("Failed to read input file");
     if let Some(program) = parse(&input) {
-        let mut vm = VM::new(program);
+        let mmio = Vec::new();
+        let mut vm = VM::new(program, mmio);
         vm.execute(vm.entrypoint().expect("No entrypoint found"));
     }
 }

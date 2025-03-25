@@ -24,7 +24,7 @@ impl Address {
     /// # Returns
     ///
     /// A new `Address` instance.
-    pub fn new(address: u32) -> Address {
+    pub const fn new(address: u32) -> Address {
         Address(address)
     }
 

@@ -1,6 +1,7 @@
 use colorful::Colorful;
 
 use crate::address::Address;
+use crate::memory::MemorySegment;
 use crate::{
     memory::Memory,
     program::{Instruction, InstructionArg, InstructionKind, Program, Word, LABEL_COLOR},
@@ -13,14 +14,14 @@ pub struct VM {
 }
 
 impl VM {
-    pub fn new(program: Program) -> Self {
+    pub fn new(program: Program, mmio: Vec<MemorySegment<u8>>) -> Self {
         log::debug!(
             "{}\n{}",
             "======= LOADED PROGRAM =======".blue(),
             program.show_color()
         );
         let registers = Registers::default();
-        let memory = Memory::load(program);
+        let memory = Memory::load(program, mmio);
         log::trace!("Memory: {:#?}", memory);
         Self { registers, memory }
     }
@@ -405,7 +406,7 @@ mod test_interpreter {
         let prog = parse(input);
         assert_ne!(prog, None);
         let program = prog.unwrap();
-        let mut vm = VM::new(program);
+        let mut vm = VM::new(program, Vec::new());
         vm.execute(vm.entrypoint().expect("No entrypoint found"));
     }
 }

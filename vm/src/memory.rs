@@ -94,6 +94,15 @@ impl PageTable {
             if !self.pages.contains_key(&page_number) {
                 self.insert_page(page_number, protection.clone());
             }
+            // Verify that the exising page has the correct protection level
+            if let Some(page) = self.pages.get(&page_number) {
+                if page.protection != protection {
+                    panic!(
+                        "Page protection mismatch: {:?} != {:?}",
+                        page.protection, protection
+                    );
+                }
+            }
         }
     }
 
@@ -249,12 +258,20 @@ impl Memory {
     /// - `.bss` section: read-write and is used for uninitialized data. (**Higher addresses**)
     /// - `.heap` section: read-write and is used for dynamic memory allocation from the dynamically allocated memory. (**Second-to-highest addresses**)
     /// - `.stack` section: read-write and is used for function calls and local variables from the stack. (**Highest addresses**)
-    pub fn load(program: Program) -> Self {
-        let mut address: Address = 0.into();
+    pub fn load(program: Program, mmio: Vec<MemorySegment<u8>>) -> Self {
         let mut page_table = PageTable::default();
         let mut labels = HashMap::new();
         let mut sections = HashMap::new();
 
+        // Constants from: https://wilkinsonj.people.charleston.edu/mem-map.html
+        const TEXT_START: Address = Address::new(0x0040_0000);
+        const TEXT_MAX: Address = Address::new(0x0FFF_FFFF);
+        const ANY_DATA_START: Address = Address::new(0x1001_0000);
+        const ANY_DATA_END: Address = Address::new(0x7FFF_FFFF);
+        const MMIO_START: Address = Address::new(0xFFFF_0000);
+        const MMIO_MAX: Address = Address::new(0xFFFF_FFFF);
+
+        let mut address = TEXT_START;
         if program.text_section.blocks.is_empty() {
             panic!("Invalid program: no .text code blocks found");
         }
@@ -273,7 +290,6 @@ impl Memory {
             text_instructions.len()
                 == ((text_end_address - text_start_address) / Instruction::size() as u32) as usize
         );
-
         let text_segment: MemorySegment<Instruction> = MemorySegment {
             name: ".text".to_string(),
             start_address: text_start_address,
@@ -300,10 +316,12 @@ impl Memory {
             text_segment.end_address.page_number(),
             ProtectionLevel::ReadExecute,
         );
+        assert!(address <= TEXT_MAX, "Out of memory: text section");
 
+        address = ANY_DATA_START;
+        let data_start_address = address;
         let data = if !program.data_section.empty() {
-            let data_start_address = address;
-            let data_initialized = program.data_section.initialized_move();
+            let data_initialized = program.data_section.initialized_static_move();
             let mut data_label_address: Address = data_start_address;
             for data in &data_initialized {
                 labels.insert(data.label.clone(), data_label_address);
@@ -316,7 +334,6 @@ impl Memory {
             address += data_raw_initialized.len();
             let data_end_address = address;
             assert!(data_raw_initialized.len() == (data_end_address - data_start_address) as usize);
-
             let data = MemorySegment {
                 name: ".data".to_string(),
                 start_address: data_start_address,
@@ -324,7 +341,6 @@ impl Memory {
                 read_handler: None,
                 write_handler: None,
             };
-
             page_table.ensure_pages(
                 data.start_address.page_number(),
                 data.end_address.page_number(),
@@ -334,16 +350,18 @@ impl Memory {
                 .write_bytes(data.start_address, &data_raw_initialized)
                 .unwrap();
 
+            log::trace!("Data section: {:?}", &data);
             sections.insert(data_start_address, data);
             Some(data_start_address)
         } else {
             None
         };
 
+        let heap_start_address = address; // Begin at the end of the .data section
         let heap = MemorySegment {
             name: ".heap".to_string(),
-            start_address: 0x10000000.into(),
-            end_address: 0x10000000.into(),
+            start_address: heap_start_address,
+            end_address: heap_start_address, // Begin with 0-size heap
             read_handler: None,
             write_handler: None,
         };
@@ -352,13 +370,15 @@ impl Memory {
             heap.end_address.page_number(),
             ProtectionLevel::ReadWrite,
         );
-        let heap_address = heap.start_address;
+        log::trace!("Heap section: {:?}", &heap);
         sections.insert(heap.start_address, heap);
 
+        // Stack grows downwards from the top of the dynamic data segment
+        let stack_start_address = ANY_DATA_END;
         let stack = MemorySegment {
             name: ".stack".to_string(),
-            start_address: 0x7fffefff.into(),
-            end_address: 0x7fffefff.into(),
+            start_address: stack_start_address,
+            end_address: stack_start_address,
             read_handler: None,
             write_handler: None,
         };
@@ -367,8 +387,31 @@ impl Memory {
             stack.end_address.page_number(),
             ProtectionLevel::ReadWrite,
         );
-        let stack_address = stack.start_address;
+        log::trace!("Stack section: {:?}", &stack);
         sections.insert(stack.start_address, stack);
+
+        // Memory-mapped I/O (MMIO) devices
+        for mmio in mmio {
+            assert!(
+                mmio.start_address >= MMIO_START && mmio.end_address <= MMIO_MAX,
+                "Invalid MMIO section range: {:?}",
+                &mmio
+            );
+            let mmio = MemorySegment {
+                name: "MMIO".to_string(),
+                start_address: mmio.start_address,
+                end_address: mmio.end_address,
+                read_handler: None,
+                write_handler: None,
+            };
+            page_table.ensure_pages(
+                mmio.start_address.page_number(),
+                mmio.end_address.page_number(),
+                ProtectionLevel::ReadWrite,
+            );
+            log::trace!("MMIO section: {:?}", &mmio);
+            sections.insert(mmio.start_address, mmio);
+        }
 
         Memory {
             page_table,
@@ -377,8 +420,8 @@ impl Memory {
             text_segment,
             text_instructions,
             data,
-            heap: heap_address,
-            stack: stack_address,
+            heap: heap_start_address,
+            stack: stack_start_address,
         }
     }
 
@@ -419,9 +462,9 @@ impl Memory {
     ) -> Result<Option<Vec<u8>>> {
         if let Some(read_handler) = read_handler {
             let mut bytes = vec![0; size]; // Pre-allocation
-            for i in 0..size {
+            (0..size).for_each(|i| {
                 bytes[i] = read_handler(address + i);
-            }
+            });
             self.page_table.write_bytes(address, &bytes)?;
             Ok(Some(bytes))
         } else {
@@ -452,7 +495,7 @@ impl Memory {
             return Err(MemoryError::OutOfBounds); // Out of bounds
         }
         if let Some(data) = self.mmio_try_read_to(section.read_handler, address, size)? {
-            return Ok(data);
+            Ok(data)
         } else {
             Ok(self
                 .page_table
