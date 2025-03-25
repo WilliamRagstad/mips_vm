@@ -122,13 +122,19 @@ impl PageTable {
     /// Write data to one or more pages in the page table.
     /// Throw an error if the page is not writable or if the page is not found.
     pub fn write_bytes(&mut self, address: Address, bytes: &[u8]) -> Result<()> {
-        let page_number = address.page_number();
-        let offset = address.page_offset();
+        let mut page_number = address.page_number();
+        let mut offset = address.page_offset();
         let mut left = bytes.len();
         while left > 0 {
             let page = self
                 .get_page_mut(page_number)
                 .ok_or(MemoryError::SegmentFault)?;
+            log::debug!(
+                "Writing to page: {:?} ({:?}) at offset: {}",
+                page_number,
+                page.protection,
+                offset
+            );
             if !page.protection.is_writable() {
                 return Err(MemoryError::ProtectionFault);
             }
@@ -137,6 +143,8 @@ impl PageTable {
             page.data[page_offset..(page_offset + write_size)]
                 .copy_from_slice(&bytes[..write_size]);
             left -= write_size;
+            offset = 0;
+            page_number += 1;
         }
         Ok(())
     }
@@ -289,7 +297,7 @@ impl Memory {
                 .flat_map(|rd| rd.data)
                 .collect();
             address += data_raw_initialized.len();
-            let data_end_address = address + 1; // - 1;
+            let data_end_address = address;
             assert!(data_raw_initialized.len() == (data_end_address - data_start_address) as usize);
 
             let data = MemorySegment {
