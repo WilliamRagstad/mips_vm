@@ -21,7 +21,7 @@ pub enum MemoryError {
 
 pub type Result<T> = std::result::Result<T, MemoryError>;
 
-#[derive(Debug, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum ProtectionLevel {
     #[default]
     Read = 0b001,
@@ -56,56 +56,145 @@ impl ProtectionLevel {
     }
 }
 
+/// The size of a page in bytes.
+/// For MIPS32, the page size is 4KB (4096 bytes).
+const PAGE_SIZE: usize = 4096; // 4KB
+
+/// A page is a fixed-length contiguous block of virtual memory, described by a single entry in the page table.
+/// It is the smallest unit of data for memory management in a virtual memory system.
+#[derive(Debug)]
+struct Page {
+    data: [u8; PAGE_SIZE],
+    protection: ProtectionLevel,
+}
+
+/// A page table is the data structure used by a virtual memory system in an operating system to store the mapping between virtual addresses and physical addresses.
+/// Virtual addresses are used by the CPU, and physical addresses are used by the hardware.
+/// The page table is used to translate virtual addresses to physical addresses.
+/// The page table is stored in memory and is managed by the operating system.
+#[derive(Debug, Default)]
+struct PageTable {
+    pages: HashMap<u32, Page>,
+}
+
+impl PageTable {
+    /// Insert a page into the page table.
+    pub fn insert_page(&mut self, page_number: u32, protection: ProtectionLevel) {
+        self.pages.insert(
+            page_number,
+            Page {
+                data: [0; PAGE_SIZE],
+                protection,
+            },
+        );
+    }
+
+    pub fn ensure_pages(&mut self, start_page: u32, end_page: u32, protection: ProtectionLevel) {
+        for page_number in start_page..=end_page {
+            if !self.pages.contains_key(&page_number) {
+                self.insert_page(page_number, protection.clone());
+            }
+        }
+    }
+
+    pub fn set_protection(&mut self, page_number: u32, protection: ProtectionLevel) {
+        if let Some(page) = self.pages.get_mut(&page_number) {
+            page.protection = protection;
+        }
+    }
+
+    pub fn set_protections(&mut self, start_page: u32, end_page: u32, protection: ProtectionLevel) {
+        for page_number in start_page..=end_page {
+            self.set_protection(page_number, protection.clone());
+        }
+    }
+
+    /// Get a mutable reference to the page for a given page number.
+    pub fn get_page_mut(&mut self, page_number: u32) -> Option<&mut Page> {
+        self.pages.get_mut(&page_number)
+    }
+
+    /// Get an immutable reference to the page for a given page number.
+    pub fn get_page(&self, page_number: u32) -> Option<&Page> {
+        self.pages.get(&page_number)
+    }
+
+    /// Write data to one or more pages in the page table.
+    /// Throw an error if the page is not writable or if the page is not found.
+    pub fn write_bytes(&mut self, address: Address, bytes: &[u8]) -> Result<()> {
+        let page_number = address.page_number();
+        let offset = address.page_offset();
+        let mut left = bytes.len();
+        while left > 0 {
+            let page = self
+                .get_page_mut(page_number)
+                .ok_or(MemoryError::SegmentFault)?;
+            if !page.protection.is_writable() {
+                return Err(MemoryError::ProtectionFault);
+            }
+            let page_offset = offset as usize;
+            let write_size = left.min(PAGE_SIZE - page_offset);
+            page.data[page_offset..(page_offset + write_size)]
+                .copy_from_slice(&bytes[..write_size]);
+            left -= write_size;
+        }
+        Ok(())
+    }
+
+    /// Read data from one or more pages in the page table.
+    /// Throw an error if the page is not readable or if the page is not found.
+    /// Return the data read from the page.
+    ///
+    /// # Returns
+    /// A vector of slices of the data read from the page.
+    pub fn read_bytes(&self, address: Address, size: usize) -> Result<Vec<&[u8]>> {
+        let page_number = address.page_number();
+        let offset = address.page_offset();
+        let mut data = Vec::new();
+        let mut left = size;
+        while left > 0 {
+            let page = self
+                .get_page(page_number)
+                .ok_or(MemoryError::SegmentFault)?;
+            if !page.protection.is_readable() {
+                return Err(MemoryError::ProtectionFault);
+            }
+            let page_offset = offset as usize;
+            let read_size = left.min(PAGE_SIZE - page_offset);
+            data.push(&page.data[page_offset..(page_offset + read_size)]);
+            left -= read_size;
+        }
+        Ok(data)
+    }
+}
+
 type ReadHandler<T> = fn(Address) -> T;
 type WriteHandler<T> = fn(Address, T);
 
 /// Memory paging is a memory management scheme that eliminates the need for
 /// contiguous allocation of physical memory.
 #[derive(Debug, Default)]
-pub struct MemorySection<T> {
+pub struct MemorySegment<T> {
     #[allow(dead_code)]
     name: String,
-    protection: ProtectionLevel,
     pub start_address: Address,
     pub end_address: Address,
-    data: Vec<T>,
     read_handler: Option<ReadHandler<T>>,
     write_handler: Option<WriteHandler<T>>,
 }
 
-impl<T> MemorySection<T> {
-    pub fn read(&self) -> &[T] {
-        if !self.protection.is_readable() {
-            panic!("Memory section is not readable");
-        }
-        &self.data
-    }
-
-    pub fn write(&mut self) -> &mut Vec<T> {
-        if !self.protection.is_writable() {
-            panic!("Memory section is not writable");
-        }
-        &mut self.data
-    }
-
-    pub fn execute(&self) -> &[T] {
-        if !self.protection.is_executable() {
-            panic!("Memory section is not executable");
-        }
-        &self.data
-    }
-}
-
 #[derive(Debug)]
 pub struct Memory {
+    page_table: PageTable,
     /// Labels with their names as the key and their address as the value.
     /// This is used to store the mapping of all address of labels in the original program.
     labels: HashMap<String, Address>,
     /// Sections of memory with their start address as the key.
-    sections: HashMap<Address, MemorySection<u8>>,
+    sections: HashMap<Address, MemorySegment<u8>>,
     /// Text section: contains the program's instructions
     /// This section is read-only and executable (code).
-    text: MemorySection<Instruction>,
+    text_segment: MemorySegment<Instruction>,
+    text_instructions: Vec<Instruction>,
     /// Data section: contains initialized data
     /// This section is read-write and typically contains global variables.
     data: Option<Address>,
@@ -137,6 +226,7 @@ impl Memory {
     /// - `.stack` section: read-write and is used for function calls and local variables from the stack. (**Highest addresses**)
     pub fn load(program: Program) -> Self {
         let mut address: Address = 0.into();
+        let mut page_table = PageTable::default();
         let mut labels = HashMap::new();
         let mut sections = HashMap::new();
 
@@ -159,15 +249,32 @@ impl Memory {
                 == ((text_end_address - text_start_address) / Instruction::size() as u32) as usize
         );
 
-        let text: MemorySection<Instruction> = MemorySection {
+        let text_segment: MemorySegment<Instruction> = MemorySegment {
             name: ".text".to_string(),
-            protection: ProtectionLevel::ReadExecute,
             start_address: text_start_address,
             end_address: text_end_address,
-            data: text_instructions,
             read_handler: None,
             write_handler: None,
         };
+        page_table.ensure_pages(
+            text_segment.start_address.page_number(),
+            text_segment.end_address.page_number(),
+            ProtectionLevel::Write,
+        );
+        page_table
+            .write_bytes(
+                text_segment.start_address,
+                &text_instructions
+                    .iter()
+                    .flat_map(|_| 0xC0DEu32.to_le_bytes())
+                    .collect::<Vec<u8>>(),
+            )
+            .unwrap();
+        page_table.set_protections(
+            text_segment.start_address.page_number(),
+            text_segment.end_address.page_number(),
+            ProtectionLevel::ReadExecute,
+        );
 
         let data = if !program.data_section.empty() {
             let data_start_address = address;
@@ -185,56 +292,72 @@ impl Memory {
             let data_end_address = address; // - 1;
             assert!(data_raw_initialized.len() == (data_end_address - data_start_address) as usize);
 
-            let data = MemorySection {
+            let data = MemorySegment {
                 name: ".data".to_string(),
-                protection: ProtectionLevel::ReadWrite,
                 start_address: data_start_address,
                 end_address: data_end_address,
-                data: data_raw_initialized,
                 read_handler: None,
                 write_handler: None,
             };
+
+            page_table.ensure_pages(
+                data.start_address.page_number(),
+                data.end_address.page_number(),
+                ProtectionLevel::ReadWrite,
+            );
+            page_table
+                .write_bytes(data.start_address, &data_raw_initialized)
+                .unwrap();
+
             sections.insert(data_start_address, data);
             Some(data_start_address)
         } else {
             None
         };
 
-        let heap = MemorySection {
+        let heap = MemorySegment {
             name: ".heap".to_string(),
-            protection: ProtectionLevel::ReadWrite,
             start_address: 0x10000000.into(),
             end_address: 0x10000000.into(),
-            data: Vec::new(),
             read_handler: None,
             write_handler: None,
         };
+        page_table.ensure_pages(
+            heap.start_address.page_number(),
+            heap.end_address.page_number(),
+            ProtectionLevel::ReadWrite,
+        );
         let heap_address = heap.start_address;
         sections.insert(heap.start_address, heap);
 
-        let stack = MemorySection {
+        let stack = MemorySegment {
             name: ".stack".to_string(),
-            protection: ProtectionLevel::ReadWrite,
             start_address: 0x7fffefff.into(),
             end_address: 0x7fffefff.into(),
-            data: Vec::new(),
             read_handler: None,
             write_handler: None,
         };
+        page_table.ensure_pages(
+            stack.start_address.page_number(),
+            stack.end_address.page_number(),
+            ProtectionLevel::ReadWrite,
+        );
         let stack_address = stack.start_address;
         sections.insert(stack.start_address, stack);
 
         Memory {
+            page_table,
             labels,
             sections,
-            text,
+            text_segment,
+            text_instructions,
             data,
             heap: heap_address,
             stack: stack_address,
         }
     }
 
-    pub fn add_section(&mut self, section: MemorySection<u8>) {
+    pub fn add_section(&mut self, section: MemorySegment<u8>) {
         self.sections.insert(section.start_address, section);
     }
 
@@ -252,16 +375,9 @@ impl Memory {
             .ok_or(MemoryError::InvalidAddress)
     }
 
-    pub fn find_section(&self, address: Address) -> Result<&MemorySection<u8>> {
+    pub fn find_section(&self, address: Address) -> Result<&MemorySegment<u8>> {
         self.sections
             .values()
-            .find(|section| section.start_address <= address && address <= section.end_address)
-            .ok_or(MemoryError::InvalidSection)
-    }
-
-    pub fn find_section_mut(&mut self, address: Address) -> Result<&mut MemorySection<u8>> {
-        self.sections
-            .values_mut()
             .find(|section| section.start_address <= address && address <= section.end_address)
             .ok_or(MemoryError::InvalidSection)
     }
@@ -270,53 +386,63 @@ impl Memory {
     /// This is used to read from a memory-mapped I/O device.
     ///
     /// Write the result into the memory address location at `self.data`.
-    fn mmio_read_to(section: &mut MemorySection<u8>, address: Address, size: usize) {
-        if let Some(read_handler) = section.read_handler {
-            let offset = (address - section.start_address) as usize;
+    fn mmio_try_read_to(
+        &mut self,
+        read_handler: Option<ReadHandler<u8>>,
+        address: Address,
+        size: usize,
+    ) -> Result<Option<Vec<u8>>> {
+        if let Some(read_handler) = read_handler {
+            let mut bytes = vec![0; size]; // Pre-allocation
             for i in 0..size {
-                section.write()[offset + i] = read_handler(address + i);
+                bytes[i] = read_handler(address + i);
             }
+            self.page_table.write_bytes(address, &bytes)?;
+            Ok(Some(bytes))
+        } else {
+            Ok(None)
         }
     }
 
     /// Write to an memory-mapped I/O address location.
     /// This is used to write to a memory-mapped I/O device.
-    fn mmio_write_to(section: &mut MemorySection<u8>, address: Address, value: &[u8]) {
-        if let Some(write_handler) = section.write_handler {
-            (0..value.len()).for_each(|i| {
-                write_handler(address + i, value[i]);
+    fn mmio_try_write_to(
+        &mut self,
+        write_handler: Option<WriteHandler<u8>>,
+        address: Address,
+        bytes: &[u8],
+    ) -> Result<()> {
+        if let Some(write_handler) = write_handler {
+            (0..bytes.len()).for_each(|i| {
+                write_handler(address + i, bytes[i]);
             });
         }
+        Ok(())
     }
 
     /// Read from a memory address location and return the data of the specified size
     pub fn read(&mut self, address: Address, size: usize) -> Result<Vec<u8>> {
-        let section = self.find_section_mut(address)?;
+        let section = self.find_section(address)?;
         if address + size > section.end_address {
             return Err(MemoryError::OutOfBounds); // Out of bounds
         }
-        let offset = (address - section.start_address) as usize;
-        Self::mmio_read_to(section, address, size);
-        section
-            .read()
-            .get(offset..offset + size)
-            .map(|d| d.to_vec())
-            .ok_or(MemoryError::InvalidSize)
+        if let Some(data) = self.mmio_try_read_to(section.read_handler, address, size)? {
+            return Ok(data);
+        } else {
+            Ok(self
+                .page_table
+                .read_bytes(address, size)?
+                .into_iter()
+                .flatten()
+                .cloned()
+                .collect::<Vec<u8>>())
+        }
     }
 
     pub fn read_buf(&mut self, address: Address, buf: &mut [u8]) -> Result<()> {
-        let section = self.find_section_mut(address)?;
-        if address + buf.len() > section.end_address {
-            return Err(MemoryError::OutOfBounds); // Out of bounds
-        }
-        let offset = (address - section.start_address) as usize;
         let size = buf.len();
-        Self::mmio_read_to(section, address, size);
-        let src = &section.read()[offset..offset + size];
-        if src.is_empty() {
-            return Err(MemoryError::InvalidSize);
-        }
-        buf[..size].copy_from_slice(src);
+        let src = self.read(address, size)?;
+        buf[..size].copy_from_slice(&src);
         Ok(())
     }
 
@@ -327,13 +453,13 @@ impl Memory {
     }
 
     pub fn read_max(&mut self, address: Address, max_size: usize) -> Result<Vec<u8>> {
-        let section = self.find_section_mut(address)?;
+        let section = self.find_section(address)?;
         let size = max_size.min((section.end_address - address) as usize);
         self.read(address, size)
     }
 
     pub fn read_buf_max(&mut self, address: Address, buf: &mut [u8]) -> Result<usize> {
-        let section = self.find_section_mut(address)?;
+        let section = self.find_section(address)?;
         let size = buf.len().min((section.end_address - address) as usize);
         self.read_buf(address, &mut buf[..size])?;
         Ok(size)
@@ -353,30 +479,30 @@ impl Memory {
 
     /// Write to a memory address location.
     /// The value is written in between `(start_address + offset)` to `(start_address + offset + value.len())`.
-    pub fn write(&mut self, address: Address, value: &[u8]) -> Result<()> {
-        let section = self.find_section_mut(address)?;
-        if address + value.len() > section.end_address {
+    pub fn write(&mut self, address: Address, bytes: &[u8]) -> Result<()> {
+        let section = self.find_section(address)?;
+        if address + bytes.len() > section.end_address {
             return Err(MemoryError::OutOfBounds); // Out of bounds
         }
-        let offset = (address - section.start_address) as usize;
-        Self::mmio_write_to(section, address, value);
-        section
-            .write()
-            .get_mut(offset..offset + value.len())
-            .ok_or(MemoryError::InvalidSize)?
-            .copy_from_slice(value);
-        Ok(())
+        self.mmio_try_write_to(section.write_handler, address, bytes)?;
+        self.page_table.write_bytes(address, bytes)
     }
 
     /// Currently, only the text section will be executable
     pub fn execute(&self, address: Address) -> Result<&Instruction> {
-        if self.text.start_address <= address && address <= self.text.end_address {
+        if self.text_segment.start_address <= address && address <= self.text_segment.end_address {
             // TODO: Improve finding the instruction by address performance
-            let index = (address - self.text.start_address) as usize / Instruction::size();
-            self.text
-                .execute()
-                .get(index)
-                .ok_or(MemoryError::InvalidInstruction)
+            let index = (address - self.text_segment.start_address) as usize / Instruction::size();
+            let Some(page) = self.page_table.get_page(address.page_number()) else {
+                return Err(MemoryError::SegmentFault);
+            };
+            if page.protection.is_executable() {
+                self.text_instructions
+                    .get(index)
+                    .ok_or(MemoryError::InvalidInstruction)
+            } else {
+                Err(MemoryError::ProtectionFault)
+            }
             // self.text
             //     .execute()
             //     .iter()
@@ -391,31 +517,31 @@ impl Memory {
         &self.labels
     }
 
-    pub fn text(&self) -> &MemorySection<Instruction> {
-        &self.text
+    pub fn text(&self) -> &MemorySegment<Instruction> {
+        &self.text_segment
     }
 
-    pub fn data(&self) -> Option<&MemorySection<u8>> {
+    pub fn data(&self) -> Option<&MemorySegment<u8>> {
         self.sections.get(&self.data?)
     }
 
-    pub fn data_mut(&mut self) -> Option<&mut MemorySection<u8>> {
+    pub fn data_mut(&mut self) -> Option<&mut MemorySegment<u8>> {
         self.sections.get_mut(&self.data?)
     }
 
-    pub fn heap(&self) -> &MemorySection<u8> {
+    pub fn heap(&self) -> &MemorySegment<u8> {
         self.sections.get(&self.heap).unwrap()
     }
 
-    pub fn heap_mut(&mut self) -> &mut MemorySection<u8> {
+    pub fn heap_mut(&mut self) -> &mut MemorySegment<u8> {
         self.sections.get_mut(&self.heap).unwrap()
     }
 
-    pub fn stack(&self) -> &MemorySection<u8> {
+    pub fn stack(&self) -> &MemorySegment<u8> {
         self.sections.get(&self.stack).unwrap()
     }
 
-    pub fn stack_mut(&mut self) -> &mut MemorySection<u8> {
+    pub fn stack_mut(&mut self) -> &mut MemorySegment<u8> {
         self.sections.get_mut(&self.stack).unwrap()
     }
 
@@ -425,25 +551,25 @@ impl Memory {
     ///
     /// Returns:
     /// - `Ok(())` if the push is successful.
-    pub fn stack_push(&mut self, value: u8) -> Result<()> {
+    pub fn stack_push(&mut self, values: &[u8]) -> Result<()> {
         // Check if the stack section is colliding with the heap section
         if self.stack().start_address - 1 <= self.heap().end_address {
             return Err(MemoryError::InvalidStack);
         }
-        self.stack_mut().write().push(value);
-        self.stack_mut().start_address -= 1;
-        Ok(())
+        let stack = self.stack_mut();
+        let stack_new_start = stack.start_address - values.len() as u32;
+        stack.start_address = stack_new_start;
+        self.page_table.write_bytes(stack_new_start, values)
     }
 
     /// Pop a byte from the stack.
     /// **The stack grows downwards** (from high address to lower addresses),
     /// so the `start_address += 1` to adjust the range of the stack section.
-    pub fn stack_pop(&mut self) -> Result<u8> {
-        let res = self.stack_mut().write().pop();
-        if res.is_some() {
-            self.stack_mut().start_address += 1;
-        }
-        res.ok_or(MemoryError::InvalidStack)
+    pub fn stack_pop(&mut self, size: usize) -> Result<Vec<u8>> {
+        let stack = self.stack_mut();
+        let stack_new_start = stack.start_address + size as u32;
+        stack.start_address = stack_new_start;
+        self.read(stack_new_start, size)
     }
 
     /// Push a word to the stack.
@@ -454,15 +580,7 @@ impl Memory {
     /// - `Ok(())` if the push is successful.
     /// - `Err` if the stack section is colliding with the heap section.
     pub fn stack_push_word(&mut self, value: Word) -> Result<()> {
-        const WORD_SIZE: usize = size_of::<Word>();
-        // Check if the stack section is colliding with the heap section
-        if self.stack().start_address - WORD_SIZE <= self.heap().end_address {
-            return Err(MemoryError::InvalidStack);
-        }
-        let bytes: [u8; WORD_SIZE] = value.to_le_bytes();
-        self.stack_mut().write().extend_from_slice(&bytes);
-        self.stack_mut().start_address -= WORD_SIZE;
-        Ok(())
+        self.stack_push(&value.to_le_bytes())
     }
 
     /// Pop a word from the stack.
@@ -470,11 +588,10 @@ impl Memory {
     /// so the `start_address += WORD_SIZE` to adjust the range of the stack section.
     pub fn stack_pop_word(&mut self) -> Result<Word> {
         const WORD_SIZE: usize = size_of::<Word>();
-        let mut bytes = [0; WORD_SIZE];
-        #[allow(clippy::needless_range_loop)]
-        for i in 0..WORD_SIZE {
-            bytes[i] = self.stack_pop()?;
-        }
+        let bytes: [u8; WORD_SIZE] = self
+            .stack_pop(WORD_SIZE)?
+            .try_into()
+            .map_err(|_| MemoryError::InvalidSize)?;
         Ok(Word::from_le_bytes(bytes))
     }
 
@@ -486,15 +603,7 @@ impl Memory {
     /// - `Some(())` if the push is successful.
     /// - `None` if the stack section is colliding with the heap section.
     pub fn stack_push_address(&mut self, value: Address) -> Result<()> {
-        const ADDRESS_SIZE: usize = size_of::<Address>();
-        // Check if the stack section is colliding with the heap section
-        if self.stack().start_address - ADDRESS_SIZE <= self.heap().end_address {
-            return Err(MemoryError::InvalidStack);
-        }
-        let bytes: [u8; ADDRESS_SIZE] = value.to_le_bytes();
-        self.stack_mut().write().extend_from_slice(&bytes);
-        self.stack_mut().start_address -= ADDRESS_SIZE;
-        Ok(())
+        self.stack_push(&value.to_le_bytes())
     }
 
     /// Pop an address from the stack.
@@ -502,11 +611,10 @@ impl Memory {
     /// so the `start_address += ADDRESS_SIZE` to adjust the range of the stack section.
     pub fn stack_pop_address(&mut self) -> Result<Address> {
         const ADDRESS_SIZE: usize = size_of::<Address>();
-        let mut bytes = [0; ADDRESS_SIZE];
-        #[allow(clippy::needless_range_loop)]
-        for i in 0..ADDRESS_SIZE {
-            bytes[i] = self.stack_pop()?;
-        }
+        let bytes: [u8; ADDRESS_SIZE] = self
+            .stack_pop(ADDRESS_SIZE)?
+            .try_into()
+            .map_err(|_| MemoryError::InvalidSize)?;
         Ok(Address::from_le_bytes(bytes))
     }
 
@@ -537,20 +645,18 @@ impl Memory {
 
     pub fn dump(&self) -> Vec<u8> {
         let mut buf = Vec::new();
-        for section in self.sections.values() {
-            if section.data.is_empty() {
-                continue;
-            }
-            let start = section.start_address.unwrap() as usize;
-            let end = section.end_address.unwrap() as usize;
+        // Iterate through all allocated memory pages
+        for (page_number, page) in &self.page_table.pages {
+            let start = Address::from_page_number(*page_number).unwrap() as usize;
+            let end = start + PAGE_SIZE;
             if buf.len() < end {
                 buf.resize(end, 0);
             }
-            buf[start..end].copy_from_slice(section.read());
+            buf[start..end].copy_from_slice(&page.data);
         }
         // Fill in text section with 0xFF
-        let text_end = self.text.end_address.unwrap() as usize;
-        let text_start = self.text.start_address.unwrap() as usize;
+        let text_end = self.text_segment.end_address.unwrap() as usize;
+        let text_start = self.text_segment.start_address.unwrap() as usize;
         let text_size = text_end - text_start + 1;
         if buf.len() < ((text_end + text_size) / Instruction::size()) {
             buf.resize(text_end + text_size, 0);

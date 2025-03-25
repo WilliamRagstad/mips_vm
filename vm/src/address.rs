@@ -28,6 +28,10 @@ impl Address {
         Address(address)
     }
 
+    pub fn from_page_number(page_number: u32) -> Address {
+        Address(page_number << 12)
+    }
+
     /// Returns the 32-bit unsigned integer value of the address.
     ///
     /// # Returns
