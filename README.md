@@ -92,3 +92,13 @@ Hello, world!
 10. [MARS Memory-Mapped Input/Output](https://wilkinsonj.people.charleston.edu/mmio.html)
 11. [Introduction to exceptions and interrupts in Mips](https://www2.it.uu.se/edu/course/homepage/os/vt20/module-1/assignment/)
 12. [Input / Output (I/O) - Michael Langer](https://www.cim.mcgill.ca/~langer/273/20-slides.pdf)
+
+### Memory
+
+Check out the references used:
+
+1. [MIPS Memory Map 1 - mips.com](https://training.mips.com/basic_mips/PDF/Memory_Map.pdf)
+2. [MIPS Memory Map 2 - charleston.edu](https://wilkinsonj.people.charleston.edu/mem-map.html)
+3. [MIPS memory layout - Uppsala](https://www.it.uu.se/education/course/homepage/os/vt18/module-0/mips-and-mars/mips-memory-layout/)
+4. [Memory Management Unit - Wikipedia](https://en.wikipedia.org/wiki/Memory_management_unit)
+5. [Memory Management - Wikipedia](https://en.wikipedia.org/wiki/Memory_management)
