@@ -713,18 +713,9 @@ impl Memory {
 
     /// Dump all the memory contents into a vector of bytes.
     /// This is used for debugging purposes.
-    pub fn dump(&self) -> Vec<u8> {
+    pub fn dump(&self, compress: bool) -> Vec<u8> {
         log::trace!("Dumping memory contents...");
         let mut buf = Vec::new();
-        // Iterate through all allocated memory pages
-        for (page_number, page) in &self.page_table.pages {
-            let start = Address::from_page_number(*page_number).unwrap() as usize;
-            let end = start + PAGE_SIZE;
-            if buf.len() < end {
-                buf.resize(end, 0);
-            }
-            buf[start..end].copy_from_slice(&page.data);
-        }
         // Fill in text section with 0xFF
         let text_end = self.text_segment.end_address.unwrap() as usize;
         let text_start = self.text_segment.start_address.unwrap() as usize;
@@ -736,6 +727,28 @@ impl Memory {
         (text_start..text_end).for_each(|i| {
             buf[i] = (CODE >> (((i - text_start) % 4) * 8)) as u8;
         });
+        // Iterate through all allocated memory pages
+        let mut page_numbers_sorted = self.page_table.pages.keys().collect::<Vec<_>>();
+        page_numbers_sorted.sort();
+        for page_number in page_numbers_sorted {
+            let page = self.page_table.get_page(*page_number).unwrap();
+            const SHARD_SIZE: usize = 256; // Contiguous memory of non-zero bytes
+            assert!(PAGE_SIZE % SHARD_SIZE == 0); // Must be multiple of SHARD_SIZE
+            let mut start = Address::from_page_number(*page_number).unwrap() as usize;
+            for shard in page.data.chunks(SHARD_SIZE) {
+                if compress && shard.iter().any(|&b| b != 0) {
+                    // Don't resize the buffer if compressing
+                    buf.extend_from_slice(shard);
+                } else {
+                    let end = start + SHARD_SIZE;
+                    if buf.len() < end {
+                        buf.resize(end, 0);
+                    }
+                    buf[start..end].copy_from_slice(shard);
+                    start += SHARD_SIZE;
+                }
+            }
+        }
         buf
     }
 }
