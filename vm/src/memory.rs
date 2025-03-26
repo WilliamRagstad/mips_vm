@@ -736,6 +736,7 @@ impl Memory {
             assert!(PAGE_SIZE % SHARD_SIZE == 0); // Must be multiple of SHARD_SIZE
             let mut start = Address::from_page_number(*page_number).unwrap() as usize;
             for shard in page.data.chunks(SHARD_SIZE) {
+                // only dump non-zero shards
                 if compress && shard.iter().any(|&b| b != 0) {
                     // Don't resize the buffer if compressing
                     buf.extend_from_slice(shard);
