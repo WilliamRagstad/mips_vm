@@ -437,7 +437,7 @@ impl Instruction {
         result
     }
 
-    pub fn size() -> usize {
+    pub const fn size() -> usize {
         4
     }
 }

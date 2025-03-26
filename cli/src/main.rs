@@ -10,9 +10,12 @@ mod mmio;
 struct Cli {
     /// Input file to run
     input: String,
-    /// Optional dump file path
+    /// Optional memory dump to file
     #[arg(short, long)]
     dump_file: Option<String>,
+    /// Do not compress memory dump
+    #[arg(short, long, default_value = "false")]
+    non_compressed: bool,
 }
 
 fn main() {
@@ -24,7 +27,7 @@ fn main() {
         let mut vm = VM::new(program, mmio);
 
         if let Some(dump_file) = args.dump_file {
-            let dump = vm.memory().dump();
+            let dump = vm.memory().dump(!args.non_compressed);
             let dump_path = std::path::PathBuf::from(dump_file);
             std::fs::write(&dump_path, dump).unwrap();
         }
