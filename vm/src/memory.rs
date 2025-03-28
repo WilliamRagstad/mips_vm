@@ -533,6 +533,18 @@ impl Memory {
         Ok(size)
     }
 
+    pub fn read_byte(&mut self, address: Address) -> Result<u8> {
+        let mut data = [0; size_of::<u8>()];
+        self.read_buf(address, &mut data)?;
+        Ok(data[0])
+    }
+
+    pub fn read_halfword(&mut self, address: Address) -> Result<u16> {
+        let mut data = [0; size_of::<u16>()];
+        self.read_buf(address, &mut data)?;
+        Ok(u16::from_le_bytes(data))
+    }
+
     pub fn read_word(&mut self, address: Address) -> Result<Word> {
         let mut data = [0; size_of::<Word>()];
         self.read_buf(address, &mut data)?;
@@ -554,6 +566,18 @@ impl Memory {
         }
         self.mmio_try_write_to(section.write_handler, address, bytes)?;
         self.page_table.write_bytes(address, bytes)
+    }
+
+    pub fn write_byte(&mut self, address: Address, value: u8) -> Result<()> {
+        self.write(address, &[value])
+    }
+
+    pub fn write_halfword(&mut self, address: Address, value: u16) -> Result<()> {
+        self.write(address, &value.to_le_bytes())
+    }
+
+    pub fn write_word(&mut self, address: Address, value: Word) -> Result<()> {
+        self.write(address, &value.to_le_bytes())
     }
 
     /// Currently, only the text section will be executable

@@ -178,10 +178,6 @@ impl VM {
                     self.registers.set(dest, imm << 16);
                 }
                 InstructionKind::Nop => { /* Do nothing */ }
-                InstructionKind::B => {
-                    let offset = self.load_word(&instruction.args[0]);
-                    pc += offset;
-                }
                 InstructionKind::J => {
                     let address = self.load_address(&instruction.args[0]);
                     pc = address;
@@ -190,6 +186,139 @@ impl VM {
                     let address = self.load_address(&instruction.args[0]);
                     self.registers.set(&Register::Ra, pc.unwrap() + 4);
                     pc = address;
+                }
+                InstructionKind::Addiu => {
+                    let dest = match &instruction.args[0] {
+                        InstructionArg::Register(r) => r,
+                        _ => panic!("Invalid argument for ADDIU instruction"),
+                    };
+                    let src = self.load_word(&instruction.args[1]);
+                    let imm = self.load_word(&instruction.args[2]);
+                    self.registers.set(dest, src.wrapping_add(imm));
+                }
+                InstructionKind::Addu => {
+                    self.arithmetic(&instruction.args, |a, b| a.wrapping_add(b))
+                }
+                InstructionKind::Blez => {
+                    let src = self.load_word(&instruction.args[0]);
+                    let offset = self.load_word(&instruction.args[1]);
+                    if src as i32 <= 0 {
+                        pc += offset;
+                    }
+                }
+                InstructionKind::Bgtz => {
+                    let src = self.load_word(&instruction.args[0]);
+                    let offset = self.load_word(&instruction.args[1]);
+                    if src as i32 > 0 {
+                        pc += offset;
+                    }
+                }
+                InstructionKind::Jalr => {
+                    let dest = match &instruction.args[0] {
+                        InstructionArg::Register(r) => r,
+                        _ => panic!("Invalid argument for JALR instruction"),
+                    };
+                    let address = self.load_address(&instruction.args[1]);
+                    self.registers.set(dest, pc.unwrap());
+                    pc = address;
+                }
+                InstructionKind::Lb => {
+                    let dest = match &instruction.args[0] {
+                        InstructionArg::Register(r) => r,
+                        _ => panic!("Invalid argument for LB instruction"),
+                    };
+                    let address = self.load_address(&instruction.args[1]);
+                    let value = self.memory.read_byte(address).unwrap() as i8 as Word;
+                    self.registers.set(dest, value);
+                }
+                InstructionKind::Lbu => {
+                    let dest = match &instruction.args[0] {
+                        InstructionArg::Register(r) => r,
+                        _ => panic!("Invalid argument for LBU instruction"),
+                    };
+                    let address = self.load_address(&instruction.args[1]);
+                    let value = self.memory.read_byte(address).unwrap() as Word;
+                    self.registers.set(dest, value);
+                }
+                InstructionKind::Lh => {
+                    let dest = match &instruction.args[0] {
+                        InstructionArg::Register(r) => r,
+                        _ => panic!("Invalid argument for LH instruction"),
+                    };
+                    let address = self.load_address(&instruction.args[1]);
+                    let value = self.memory.read_halfword(address).unwrap() as i16 as Word;
+                    self.registers.set(dest, value);
+                }
+                InstructionKind::Lhu => {
+                    let dest = match &instruction.args[0] {
+                        InstructionArg::Register(r) => r,
+                        _ => panic!("Invalid argument for LHU instruction"),
+                    };
+                    let address = self.load_address(&instruction.args[1]);
+                    let value = self.memory.read_halfword(address).unwrap() as Word;
+                    self.registers.set(dest, value);
+                }
+                InstructionKind::Multu => {
+                    self.arithmetic(&instruction.args, |a, b| a.wrapping_mul(b))
+                }
+                InstructionKind::Divu => self.arithmetic(&instruction.args, |a, b| a / b),
+                InstructionKind::Ori => {
+                    let dest = match &instruction.args[0] {
+                        InstructionArg::Register(r) => r,
+                        _ => panic!("Invalid argument for ORI instruction"),
+                    };
+                    let src = self.load_word(&instruction.args[1]);
+                    let imm = self.load_word(&instruction.args[2]);
+                    self.registers.set(dest, src | imm);
+                }
+                InstructionKind::Sltu => {
+                    self.arithmetic(&instruction.args, |a, b| if a < b { 1 } else { 0 })
+                }
+                InstructionKind::Slti => {
+                    let dest = match &instruction.args[0] {
+                        InstructionArg::Register(r) => r,
+                        _ => panic!("Invalid argument for SLTI instruction"),
+                    };
+                    let src = self.load_word(&instruction.args[1]);
+                    let imm = self.load_word(&instruction.args[2]);
+                    self.registers
+                        .set(dest, if (src as i32) < (imm as i32) { 1 } else { 0 });
+                }
+                InstructionKind::Sltiu => {
+                    let dest = match &instruction.args[0] {
+                        InstructionArg::Register(r) => r,
+                        _ => panic!("Invalid argument for SLTIU instruction"),
+                    };
+                    let src = self.load_word(&instruction.args[1]);
+                    let imm = self.load_word(&instruction.args[2]);
+                    self.registers.set(dest, if src < imm { 1 } else { 0 });
+                }
+                InstructionKind::Sllv => self.arithmetic(&instruction.args, |a, b| a << b),
+                InstructionKind::Srav => {
+                    self.arithmetic(&instruction.args, |a, b| (a as i32 >> b) as Word)
+                }
+                InstructionKind::Srlv => self.arithmetic(&instruction.args, |a, b| a >> b),
+                InstructionKind::Sb => {
+                    let value = self.load_word(&instruction.args[0]) as u8;
+                    let address = self.load_address(&instruction.args[1]);
+                    self.memory.write_byte(address, value).unwrap();
+                }
+                InstructionKind::Sh => {
+                    let value = self.load_word(&instruction.args[0]) as u16;
+                    let address = self.load_address(&instruction.args[1]);
+                    self.memory.write_halfword(address, value).unwrap();
+                }
+                InstructionKind::Subu => {
+                    self.arithmetic(&instruction.args, |a, b| a.wrapping_sub(b))
+                }
+                InstructionKind::Xori => {
+                    let dest = match &instruction.args[0] {
+                        InstructionArg::Register(r) => r,
+                        _ => panic!("Invalid argument for XORI instruction"),
+                    };
+                    let src = self.load_word(&instruction.args[1]);
+                    let imm = self.load_word(&instruction.args[2]);
+                    self.registers.set(dest, src ^ imm);
                 }
             }
         }
@@ -200,7 +329,7 @@ impl VM {
         match arg {
             InstructionArg::Immediate(value) => *value as Word,
             InstructionArg::Register(register) => self.registers.get(register),
-            InstructionArg::RegisterOffset(register, offset) => {
+            InstructionArg::RegisterOffset(offset, register) => {
                 let base = Address::new(self.registers.get(register));
                 let address = base + *offset;
                 self.memory.read_word(address).unwrap_or_else(|err| {
@@ -218,7 +347,7 @@ impl VM {
         match arg {
             InstructionArg::Immediate(value) => Address::new(*value as u32),
             InstructionArg::Register(register) => Address::new(self.registers.get(register)),
-            InstructionArg::RegisterOffset(register, offset) => {
+            InstructionArg::RegisterOffset(offset, register) => {
                 let base = Address::new(self.registers.get(register));
                 base + *offset
             }

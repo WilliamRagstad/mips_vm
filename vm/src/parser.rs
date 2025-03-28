@@ -166,8 +166,8 @@ pub fn parse(input: &str) -> Option<Program> {
                                     let immediate = inner.next().unwrap();
                                     let register = Register::from(inner.next().unwrap().as_str());
                                     args.push(InstructionArg::RegisterOffset(
-                                        register,
                                         parse_imm(immediate),
+                                        register,
                                     ));
                                 }
                                 Rule::immediate => {
