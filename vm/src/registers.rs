@@ -27,41 +27,76 @@ impl Registers {
 pub enum Register {
     /// Zero register.
     /// Always contains the value 0.
-    Zero,
-    At,
-    V0,
-    V1,
-    A0,
-    A1,
-    A2,
-    A3,
-    T0,
-    T1,
-    T2,
-    T3,
-    T4,
-    T5,
-    T6,
-    T7,
-    S0,
-    S1,
-    S2,
-    S3,
-    S4,
-    S5,
-    S6,
-    S7,
-    T8,
-    T9,
-    K0,
-    K1,
-    Gp,
-    Sp,
-    Fp,
-    Ra,
+    Zero = 0,
+    /// Assembler temp
+    At = 1,
+    /// Function return
+    V0 = 2,
+    /// Function return
+    V1 = 3,
+    /// Argument
+    A0 = 4,
+    /// Argument
+    A1 = 5,
+    /// Argument
+    A2 = 6,
+    /// Argument
+    A3 = 7,
+    /// Temporary value
+    T0 = 8,
+    /// Temporary value
+    T1 = 9,
+    /// Temporary value
+    T2 = 10,
+    /// Temporary value
+    T3 = 11,
+    /// Temporary value
+    T4 = 12,
+    /// Temporary value
+    T5 = 13,
+    /// Temporary value
+    T6 = 14,
+    /// Temporary value
+    T7 = 15,
+    /// Saved temporary
+    S0 = 16,
+    /// Saved temporary
+    S1 = 17,
+    /// Saved temporary
+    S2 = 18,
+    /// Saved temporary
+    S3 = 19,
+    /// Saved temporary
+    S4 = 20,
+    /// Saved temporary
+    S5 = 21,
+    /// Saved temporary
+    S6 = 22,
+    /// Saved temporary
+    S7 = 23,
+    /// Temporary value
+    T8 = 24,
+    /// Temporary value
+    T9 = 25,
+    /// Reserved for OS
+    K0 = 26,
+    /// Reserved for OS
+    K1 = 27,
+    /// Global pointer
+    Gp = 28,
+    /// Stack pointer
+    Sp = 29,
+    /// Frame pointer
+    Fp = 30,
+    /// Return address
+    Ra = 31,
 }
 
 impl Register {
+    pub fn encode(&self) -> u8 {
+        *self as u8
+    }
+
     pub fn show(&self) -> &str {
         match self {
             Register::Zero => "$zero",

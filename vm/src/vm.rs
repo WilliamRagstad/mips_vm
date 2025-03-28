@@ -98,7 +98,7 @@ impl VM {
                 },
                 InstructionKind::Add => self.arithmetic(&instruction.args, |a, b| a + b),
                 InstructionKind::Sub => self.arithmetic(&instruction.args, |a, b| a - b),
-                InstructionKind::Mul => self.arithmetic(&instruction.args, |a, b| a * b),
+                InstructionKind::Mult => self.arithmetic(&instruction.args, |a, b| a * b),
                 InstructionKind::Div => self.arithmetic(&instruction.args, |a, b| a / b),
                 InstructionKind::And => self.arithmetic(&instruction.args, |a, b| a & b),
                 InstructionKind::Or => self.arithmetic(&instruction.args, |a, b| a | b),

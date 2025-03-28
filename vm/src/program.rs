@@ -117,7 +117,7 @@ impl DataSection {
 /// Represents the different kinds of MIPS instructions.
 #[derive(Clone, Debug, PartialEq)]
 pub enum InstructionKind {
-    /// Add two registers and store the result in a register.
+    /// Add two registers and store the signed result in a register.
     ///
     /// Syntax: `add $d, $s, $t`
     ///
@@ -129,24 +129,18 @@ pub enum InstructionKind {
     ///
     /// Description: `$d = $s + immediate`
     Addi,
-    /// Subtract one register from another and store the result in a register.
+    /// Add an unsigned immediate value to a register and store the result in a register.
     ///
-    /// Syntax: `sub $d, $s, $t`
+    /// Syntax: `addiu $d, $s, immediate`
     ///
-    /// Description: `$d = $s - $t`
-    Sub,
-    /// Multiply two registers and store the result in a register.
+    /// Description: `$d = $s + immediate`
+    Addiu,
+    /// Add two registers and store the unsigned result in a register.
     ///
-    /// Syntax: `mul $d, $s, $t`
+    /// Syntax: `addu $d, $s, $t`
     ///
-    /// Description: `$d = $s * $t`
-    Mul,
-    /// Divide one register by another and store the result in a register.
-    ///
-    /// Syntax: `div $d, $s, $t`
-    ///
-    /// Description: `$d = $s / $t`
-    Div,
+    /// Description: `$d = $s + $t`
+    Addu,
     /// Perform a bitwise AND on two registers and store the result in a register.
     ///
     /// Syntax: `and $d, $s, $t`
@@ -159,72 +153,54 @@ pub enum InstructionKind {
     ///
     /// Description: `$d = $s & immediate`
     Andi,
-    /// Perform a bitwise OR on two registers and store the result in a register.
-    ///
-    /// Syntax: `or $d, $s, $t`
-    ///
-    /// Description: `$d = $s | $t`
-    Or,
-    /// Perform a bitwise XOR on two registers and store the result in a register.
-    ///
-    /// Syntax: `xor $d, $s, $t`
-    ///
-    /// Description: `$d = $s ^ $t`
-    Xor,
-    /// Perform a bitwise NOR on two registers and store the result in a register.
-    ///
-    /// Syntax: `nor $d, $s, $t`
-    ///
-    /// Description: `$d = ~($s | $t)`
-    Nor,
-    /// Set a register to 1 if one register is less than another, otherwise set it to 0.
-    ///
-    /// Syntax: `slt $d, $s, $t`
-    ///
-    /// Description: `$d = ($s < $t) ? 1 : 0`
-    Slt,
-    /// Shift a register left by a specified number of bits and store the result in a register.
-    ///
-    /// Syntax: `sll $d, $t, shamt`
-    ///
-    /// Description: `$d = $t << shamt`
-    Sll,
-    /// Shift a register right by a specified number of bits and store the result in a register.
-    ///
-    /// Syntax: `srl $d, $t, shamt`
-    ///
-    /// Description: `$d = $t >> shamt`
-    Srl,
-    /// Shift a register right by a specified number of bits with sign extension and store the result in a register.
-    ///
-    /// Syntax: `sra $d, $t, shamt`
-    ///
-    /// Description: `$d = $t >> shamt` (arithmetic shift)
-    Sra,
     /// Branch if two registers are equal.
     ///
     /// Syntax: `beq $s, $t, offset`
     ///
     /// Description: `if ($s == $t) branch to address PC + 4 + (offset * 4)`
     Beq,
+    /// Branch if less that equal to zero.
+    ///
+    /// Syntax: `blez $s, offset`
+    ///
+    /// Description: `if ($s <= 0) branch to address PC + 4 + (offset * 4)`
+    Blez,
     /// Branch if two registers are not equal.
     ///
     /// Syntax: `bne $s, $t, offset`
     ///
     /// Description: `if ($s != $t) branch to address PC + 4 + (offset * 4)`
     Bne,
-    /// Load a word from memory into a register.
+    /// Branch to a label if a register is greater than zero.
     ///
-    /// Syntax: `lw $t, offset($s)`
+    /// Syntax: `bgtz $s, offset`
     ///
-    /// Description: `$t = Memory[$s + offset]`
-    Lw,
-    /// Store a word from a register into memory.
+    /// Description: `if ($s > 0) branch to address PC + 4 + (offset * 4)`
+    Bgtz,
+    /// Jump and link to a register (store return address in $ra).
     ///
-    /// Syntax: `sw $t, offset($s)`
+    /// Syntax: `jalr $rs`
     ///
-    /// Description: `Memory[$s + offset] = $t`
-    Sw,
+    /// Description: `$ra = PC + 4; jump to address in a register`
+    Jalr,
+    /// Jump to the address contained in a register.
+    ///
+    /// Syntax: `jr $s`
+    ///
+    /// Description: `jump to address in $s`
+    Jr,
+    /// Jump to a label.
+    ///
+    /// Syntax: `j label`
+    ///
+    /// Description: `jump to address of label`
+    J,
+    /// Jump and link to a label (store return address in $ra).
+    ///
+    /// Syntax: `jal label`
+    ///
+    /// Description: `$ra = PC + 4; jump to address of label`
+    Jal,
     /// Load an immediate value into a register.
     /// Use this when you want to put an integer value into a register.
     ///
@@ -232,12 +208,6 @@ pub enum InstructionKind {
     ///
     /// Description: `$t = immediate`
     Li,
-    /// Load an upper immediate value into a register.
-    ///
-    /// Syntax: `lui $t, immediate`
-    ///
-    /// Description: `$t = immediate << 16`
-    Lui,
     /// Load the address of a label into a register.
     /// Use this when you want to put an address value into a register.
     ///
@@ -247,30 +217,186 @@ pub enum InstructionKind {
     ///
     /// Where `label` is pre-defined for something in memory (defined under the `.data` directive).
     La,
-    /// Unconditional branch to a label.
+    /// Load an immediate byte value into a register.
     ///
-    /// Syntax: `b label`
+    /// Syntax: `lb $rt, immediate`
     ///
-    /// Description: `branch to address of label`
-    B,
-    /// Jump to a label.
+    /// Description: `$rt = immediate`
+    Lb,
+    /// Load an unsigned byte value into a register.
     ///
-    /// Syntax: `j label`
+    /// Syntax: `lbu $rt, immediate`
     ///
-    /// Description: `jump to address of label`
-    J,
-    /// Jump to the address contained in a register.
+    /// Description: `$rt = immediate`
+    Lbu,
+    /// Load halfword from memory into a register.
     ///
-    /// Syntax: `jr $s`
+    /// Syntax: `lh $rt, offset($rs)`
     ///
-    /// Description: `jump to address in $s`
-    Jr,
-    /// Jump and link to a label (store return address in $ra).
+    /// Description: `$rt = Memory[$rs + offset]`
+    Lh,
+    /// Load halfword unsigned from memory into a register.
     ///
-    /// Syntax: `jal label`
+    /// Syntax: `lhu $rt, offset($rs)`
     ///
-    /// Description: `$ra = PC + 4; jump to address of label`
-    Jal,
+    /// Description: `$rt = Memory[$rs + offset]`
+    Lhu,
+    /// Load an upper immediate value from memory into a register.
+    ///
+    /// Syntax: `lui $t, offset($s)`
+    ///
+    /// Description: `$t = Memory[$s + offset] << 16`
+    Lui,
+    /// Load a word from memory into a register.
+    ///
+    /// Syntax: `lw $t, offset($s)`
+    ///
+    /// Description: `$t = Memory[$s + offset]`
+    Lw,
+    /// Multiply two registers and store the result in a register.
+    ///
+    /// Syntax: `mul $d, $s, $t`
+    ///
+    /// Description: `$d = $s * $t`
+    Mult,
+    /// Multiply two registers (unsigned) and store the result in a register.
+    ///
+    /// Syntax: `mulu $d, $s, $t`
+    ///
+    /// Description: `$d = $s * $t`
+    Multu,
+    /// Divide one register by another and store the result in a register.
+    ///
+    /// Syntax: `div $d, $s, $t`
+    ///
+    /// Description: `$d = $s / $t`
+    Div,
+    /// Divide one register by another (unsigned) and store the result in a register.
+    ///
+    /// Syntax: `divu $d, $s, $t`
+    ///
+    /// Description: `$d = $s / $t`
+    Divu,
+    /// Perform a bitwise NOR on two registers and store the result in a register.
+    ///
+    /// Syntax: `nor $d, $s, $t`
+    ///
+    /// Description: `$d = ~($s | $t)`
+    Nor,
+    /// Perform a bitwise OR on two registers and store the result in a register.
+    ///
+    /// Syntax: `or $d, $s, $t`
+    ///
+    /// Description: `$d = $s | $t`
+    Or,
+    /// Perform a bitwise OR on a register an immediate value and store the result in a register.
+    ///
+    /// Syntax: `ori $d, $s, immediate`
+    ///
+    /// Description: `$d = $s | immediate`
+    Ori,
+    /// Set a register to 1 if one register is less than another, otherwise set it to 0.
+    ///
+    /// Syntax: `slt $d, $s, $t`
+    ///
+    /// Description: `$d = ($s < $t) ? 1 : 0`
+    Slt,
+    /// Set a register to 1 if one register is less than another (unsigned), otherwise set it to 0.
+    ///
+    /// Syntax: `sltu $d, $s, $t`
+    ///
+    /// Description: `$d = ($s < $t) ? 1 : 0`
+    Sltu,
+    /// Set a register to 1 if one register is less than an immediate value, otherwise set it to 0.
+    ///
+    /// Syntax: `slti $d, $s, immediate`
+    ///
+    /// Description: `$d = ($s < immediate) ? 1 : 0`
+    Slti,
+    /// Set a register to 1 if one register is less than an immediate value (unsigned), otherwise set it to 0.
+    ///
+    /// Syntax: `sltiu $d, $s, immediate`
+    ///
+    /// Description: `$d = ($s < immediate) ? 1 : 0`
+    Sltiu,
+    /// Shift a register left by a specified number of bits and store the result in a register.
+    ///
+    /// Syntax: `sll $d, $t, shamt`
+    ///
+    /// Description: `$d = $t << shamt`
+    Sll,
+    /// Shift a register left by a value stored in a register (variable) and store the result in a register.
+    ///
+    /// Syntax: `sllv $d, $t, $s`
+    ///
+    /// Description: `$d = $t << $s`
+    Sllv,
+    /// Shift a register right by a specified number of bits with sign extension and store the result in a register.
+    ///
+    /// Syntax: `sra $d, $t, shamt`
+    ///
+    /// Description: `$d = $t >> shamt` (arithmetic shift)
+    Sra,
+    /// Shift a register right by a value stored in a register (variable) and store the result in a register.
+    ///
+    /// Syntax: `srav $d, $t, $s`
+    ///
+    /// Description: `$d = $t >> $s`
+    Srav,
+    /// Shift a register right by a specified number of bits and store the result in a register.
+    ///
+    /// Syntax: `srl $d, $t, shamt`
+    ///
+    /// Description: `$d = $t >> shamt`
+    Srl,
+    /// Shift a register right by a value stored in a register (variable) and store the result in a register.
+    ///
+    /// Syntax: `srlv $d, $t, $s`
+    ///
+    /// Description: `$d = $t >> $s`
+    Srlv,
+    /// Store a byte from a register into memory.
+    ///
+    /// Syntax: `sb $t, offset($s)`
+    ///
+    /// Description: `Memory[$s + offset] = $t`
+    Sb,
+    /// Store a halfword from a register into memory.
+    ///
+    /// Syntax: `sh $t, offset($s)`
+    ///
+    /// Description: `Memory[$s + offset] = $t`
+    Sh,
+    /// Store a word from a register into memory.
+    ///
+    /// Syntax: `sw $t, offset($s)`
+    ///
+    /// Description: `Memory[$s + offset] = $t`
+    Sw,
+    /// Subtract one register from another and store the result in a register.
+    ///
+    /// Syntax: `sub $d, $s, $t`
+    ///
+    /// Description: `$d = $s - $t`
+    Sub,
+    /// Subtract one register from another (unsigned) and store the result in a register.
+    ///
+    /// Syntax: `subu $d, $s, $t`
+    ///
+    /// Description: `$d = $s - $t`
+    Subu,
+    /// Perform a bitwise XOR on two registers and store the result in a register.
+    ///
+    /// Syntax: `xor $d, $s, $t`
+    ///
+    /// Description: `$d = $s ^ $t`
+    Xor,
+    /// Perform a bitwise XOR on a register an immediate value and store the result in a register.
+    ///
+    /// Syntax: `xori $d, $s, immediate`
+    ///
+    /// Description: `$d = $s ^ immediate`
+    Xori,
     /// Move a value from one register to another.
     ///
     /// Syntax: `move $d, $s`
@@ -296,8 +422,10 @@ impl InstructionKind {
         match self {
             InstructionKind::Add => "add",
             InstructionKind::Addi => "addi",
+            InstructionKind::Addiu => "addiu",
+            InstructionKind::Addu => "addu",
             InstructionKind::Sub => "sub",
-            InstructionKind::Mul => "mul",
+            InstructionKind::Mult => "mult",
             InstructionKind::Div => "div",
             InstructionKind::And => "and",
             InstructionKind::Andi => "andi",
@@ -317,11 +445,30 @@ impl InstructionKind {
             InstructionKind::Lui => "lui",
             InstructionKind::Move => "move",
             InstructionKind::La => "la",
-            InstructionKind::B => "b",
             InstructionKind::J => "j",
             InstructionKind::Jal => "jal",
             InstructionKind::Nop => "nop",
             InstructionKind::Syscall => "syscall",
+            InstructionKind::Jalr => "jalr",
+            InstructionKind::Lb => "lb",
+            InstructionKind::Lbu => "lbu",
+            InstructionKind::Ori => "ori",
+            InstructionKind::Sltu => "sltu",
+            InstructionKind::Slti => "slti",
+            InstructionKind::Sltiu => "sltiu",
+            InstructionKind::Sllv => "sllv",
+            InstructionKind::Srlv => "srlv",
+            InstructionKind::Sb => "sb",
+            InstructionKind::Subu => "subu",
+            InstructionKind::Xori => "xori",
+            InstructionKind::Blez => "blez",
+            InstructionKind::Bgtz => "bgtz",
+            InstructionKind::Lhu => "lhu",
+            InstructionKind::Multu => "multu",
+            InstructionKind::Sh => "sh",
+            InstructionKind::Lh => "lh",
+            InstructionKind::Srav => "srav",
+            InstructionKind::Divu => "divu",
         }
     }
 }
@@ -331,8 +478,11 @@ impl From<&str> for InstructionKind {
         match s {
             "add" => InstructionKind::Add,
             "addi" => InstructionKind::Addi,
+            "addiu" => InstructionKind::Addiu,
+            "addu" => InstructionKind::Addu,
             "sub" => InstructionKind::Sub,
-            "mul" => InstructionKind::Mul,
+            "mul" => InstructionKind::Mult,
+            "mult" => InstructionKind::Mult,
             "div" => InstructionKind::Div,
             "and" => InstructionKind::And,
             "andi" => InstructionKind::Andi,
@@ -352,11 +502,31 @@ impl From<&str> for InstructionKind {
             "lui" => InstructionKind::Lui,
             "move" => InstructionKind::Move,
             "la" => InstructionKind::La,
-            "b" => InstructionKind::B,
             "j" => InstructionKind::J,
             "jal" => InstructionKind::Jal,
             "nop" => InstructionKind::Nop,
             "syscall" => InstructionKind::Syscall,
+            "jalr" => InstructionKind::Jalr,
+            "lb" => InstructionKind::Lb,
+            "lbu" => InstructionKind::Lbu,
+            "ori" => InstructionKind::Ori,
+            "sltu" => InstructionKind::Sltu,
+            "slti" => InstructionKind::Slti,
+            "sltiu" => InstructionKind::Sltiu,
+            "sllv" => InstructionKind::Sllv,
+            "srlv" => InstructionKind::Srlv,
+            "sb" => InstructionKind::Sb,
+            "subu" => InstructionKind::Subu,
+            "xori" => InstructionKind::Xori,
+            "blez" => InstructionKind::Blez,
+            "bgtz" => InstructionKind::Bgtz,
+            "lhu" => InstructionKind::Lhu,
+            "mulu" => InstructionKind::Multu,
+            "multu" => InstructionKind::Multu,
+            "sh" => InstructionKind::Sh,
+            "lh" => InstructionKind::Lh,
+            "srav" => InstructionKind::Srav,
+            "divu" => InstructionKind::Divu,
             _ => panic!("Invalid instruction: {}", s),
         }
     }
@@ -370,17 +540,45 @@ pub enum InstructionArg {
     /// An immediate value argument.
     Immediate(Immediate),
     /// Register offset argument.
-    RegisterOffset(Register, Immediate),
+    RegisterOffset(Immediate, Register),
     /// A label argument.
     Label(String),
 }
 
 impl InstructionArg {
+    pub fn as_register(self) -> Option<Register> {
+        match self {
+            InstructionArg::Register(r) => Some(r),
+            _ => None,
+        }
+    }
+
+    pub fn as_immediate(self) -> Option<Immediate> {
+        match self {
+            InstructionArg::Immediate(i) => Some(i),
+            _ => None,
+        }
+    }
+
+    pub fn as_label(self) -> Option<String> {
+        match self {
+            InstructionArg::Label(l) => Some(l),
+            _ => None,
+        }
+    }
+
+    pub fn as_offset(self) -> Option<(Immediate, Register)> {
+        match self {
+            InstructionArg::RegisterOffset(o, r) => Some((o, r)),
+            _ => None,
+        }
+    }
+
     pub fn show(&self) -> String {
         match self {
             InstructionArg::Register(r) => r.show().to_string(),
             InstructionArg::Immediate(i) => format!("0x{:x}", i),
-            InstructionArg::RegisterOffset(r, offset) => format!("{}({})", offset, r.show()),
+            InstructionArg::RegisterOffset(o, r) => format!("{}({})", o, r.show()),
             InstructionArg::Label(l) => l.to_string(),
         }
     }
@@ -389,9 +587,9 @@ impl InstructionArg {
         match self {
             InstructionArg::Register(r) => r.show().color(REGISTER_COLOR).to_string(),
             InstructionArg::Immediate(i) => format!("0x{:x}", i).color(IMMEDIATE_COLOR).to_string(),
-            InstructionArg::RegisterOffset(r, offset) => format!(
+            InstructionArg::RegisterOffset(o, r) => format!(
                 "{}({})",
-                offset.to_string().color(IMMEDIATE_COLOR),
+                o.to_string().color(IMMEDIATE_COLOR),
                 r.show_color()
             )
             .color(REGISTER_COLOR)

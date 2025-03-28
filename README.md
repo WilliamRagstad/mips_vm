@@ -84,6 +84,9 @@ Hello, world!
 2. [MIPS32 Architecture For Programmers Volume II-A: The MIPS32 Instruction Set](https://s3-eu-west-1.amazonaws.com/downloads-mips/documents/MD00086-2B-MIPS32BIS-AFP-06.03.pdf)
 3. [MIPS Architecture - Wikipedia](https://en.wikipedia.org/wiki/MIPS_architecture)
 4. [MIPS Assembly Language - Wikibooks](https://en.wikibooks.org/wiki/MIPS_Assembly)
+
+    - [MIPS Assembly/Instruction Formats](https://en.wikibooks.org/wiki/MIPS_Assembly/Instruction_Formats)
+
 5. [MARS - Mips Assembly and Runtime Simulator Help](https://dpetersanderson.github.io/Help/MarsHelpIntro.html)
 6. [MIPS Reference Sheet - David Broman, KTH](https://www.kth.se/social/files/563c63c9f276547044e8695f/mips-ref-sheet.pdf)
 7. [MIPS Instruction Set - Andrea Gasparetto](https://www.dsi.unive.it/~gasparetto/materials/MIPS_Instruction_Set.pdf)
@@ -92,6 +95,11 @@ Hello, world!
 10. [MARS Memory-Mapped Input/Output](https://wilkinsonj.people.charleston.edu/mmio.html)
 11. [Introduction to exceptions and interrupts in Mips](https://www2.it.uu.se/edu/course/homepage/os/vt20/module-1/assignment/)
 12. [Input / Output (I/O) - Michael Langer](https://www.cim.mcgill.ca/~langer/273/20-slides.pdf)
+13. [Plasma MIPS I opcodes - OpenCores](https://opencores.org/projects/plasma/opcodes)
+14. [MIPS32® 4KETM Processor Core Family Software User’s Manual](https://s3-eu-west-1.amazonaws.com/downloads-mips/documents/MD00016-2B-4K-SUM-01.18.pdf)
+15. [MIPS Assembly Language Programming - Robert Britton](https://www.cs.csub.edu/~eddie/cmps2240/doc/britton-mips-text.pdf)
+16. [MIPS Encoding Reference - University of Waterloo](https://student.cs.uwaterloo.ca/~isg/res/mips/opcodes)
+17. [MIPS System Calls - University of Waterloo](https://student.cs.uwaterloo.ca/~isg/res/mips/traps)
 
 ### Memory
 
