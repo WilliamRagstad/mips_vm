@@ -2,7 +2,7 @@ use std::sync::RwLock;
 
 use crate::{
     address::Address,
-    memory::Memory,
+    memory::LabelMap,
     program::{Immediate, Instruction, InstructionKind},
     registers::Register,
 };
@@ -99,30 +99,33 @@ impl InstructionInfo {
         }
     }
 }
-pub fn assemble_all(instructions: Vec<Instruction>, memory: &Memory) -> Vec<EncodedInstruction> {
+pub fn assemble_all(instructions: &[Instruction], labels: &LabelMap) -> Vec<EncodedInstruction> {
     instructions
         .into_iter()
-        .map(|i| encode_instruction(i, memory))
+        .map(|i| encode_instruction(i, labels))
         .collect()
 }
 
-pub fn info(instruction: Instruction, memory: &Memory) -> InstructionInfo {
-    let args = RwLock::new(instruction.args.into_iter());
+pub fn info(instruction: &Instruction, labels: &LabelMap) -> InstructionInfo {
+    let args = RwLock::new(instruction.args.iter());
     let next = || args.write().unwrap().next();
-    let reg = || next().map(|arg| arg.as_register().unwrap());
+    let reg = || next().map(|arg| arg.clone().as_register().unwrap());
     let imm = || {
         next()
-            .map(|arg| arg.as_immediate().unwrap())
+            .map(|arg| arg.clone().as_immediate().unwrap())
             .expect("Expected immediate argument")
     };
     let addr = || {
         next()
-            .map(|arg| memory.address_of_label(&arg.as_label().unwrap()).unwrap())
+            .map(|arg| {
+                let label = arg.clone().as_label().unwrap();
+                *labels.get(&label).expect("Expected label argument")
+            })
             .expect("Expected address argument")
     };
     let offset = || {
         next()
-            .map(|arg| arg.as_offset().unwrap())
+            .map(|arg| arg.clone().as_offset().unwrap())
             .expect("Expected offset argument")
     };
     match instruction.kind {
@@ -361,14 +364,14 @@ pub fn info(instruction: Instruction, memory: &Memory) -> InstructionInfo {
     }
 }
 
-pub fn encode_instruction(instruction: Instruction, memory: &Memory) -> EncodedInstruction {
-    let info = info(instruction, memory);
+pub fn encode_instruction(instruction: &Instruction, labels: &LabelMap) -> EncodedInstruction {
+    let info = info(instruction, labels);
     if info.format.is_register() {
-        encode_register_type(&info, &info.format.unwrap_register())
+        encode_register_type(&info, info.format.unwrap_register())
     } else if info.format.is_immediate() {
-        encode_immediate_type(&info, &info.format.unwrap_immediate())
+        encode_immediate_type(&info, info.format.unwrap_immediate())
     } else {
-        encode_jump_type(&info, &info.format.unwrap_jump())
+        encode_jump_type(&info, info.format.unwrap_jump())
     }
 }
 

@@ -16,6 +16,9 @@ struct Cli {
     /// Do not compress memory dump
     #[arg(short, long, default_value = "false")]
     non_compressed: bool,
+    /// Shard size for compression
+    #[arg(short, long, default_value = "128")]
+    shard_size: usize,
 }
 
 fn main() {
@@ -27,7 +30,7 @@ fn main() {
         let mut vm = VM::new(program, mmio);
 
         if let Some(dump_file) = args.dump_file {
-            let dump = vm.memory().dump(!args.non_compressed);
+            let dump = vm.memory().dump(!args.non_compressed, args.shard_size);
             let dump_path = std::path::PathBuf::from(dump_file);
             std::fs::write(&dump_path, dump).unwrap();
         }

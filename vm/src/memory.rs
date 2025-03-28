@@ -1,6 +1,7 @@
 use std::{collections::HashMap, mem::size_of};
 
 use crate::address::Address;
+use crate::assembler::assemble_all;
 use crate::program::{Instruction, Program, Word};
 
 #[derive(Debug, PartialEq)]
@@ -200,6 +201,8 @@ pub struct MemorySegment<T> {
     write_handler: Option<WriteHandler<T>>,
 }
 
+pub type LabelMap = HashMap<String, Address>;
+
 /// The memory of the MIPS VM is divided into several sections:
 /// - `.text` section: read-only and executable (code) from the program's instructions.
 /// - `.data` section: read-write and typically contains global variables from the initialized data.
@@ -222,7 +225,7 @@ pub struct Memory {
     page_table: PageTable,
     /// Labels with their names as the key and their address as the value.
     /// This is used to store the mapping of all address of labels in the original program.
-    labels: HashMap<String, Address>,
+    labels: LabelMap,
     /// Sections of memory with their start address as the key.
     sections: HashMap<Address, MemorySegment<u8>>,
     /// Text section: contains the program's instructions
@@ -260,7 +263,7 @@ impl Memory {
     /// - `.stack` section: read-write and is used for function calls and local variables from the stack. (**Highest addresses**)
     pub fn load(program: Program, mmio: Vec<MemorySegment<u8>>) -> Self {
         let mut page_table = PageTable::default();
-        let mut labels = HashMap::new();
+        let mut labels: LabelMap = LabelMap::new();
         let mut sections = HashMap::new();
 
         // Constants from: https://wilkinsonj.people.charleston.edu/mem-map.html
@@ -271,55 +274,10 @@ impl Memory {
         const MMIO_START: Address = Address::new(0xFFFF_0000);
         const MMIO_MAX: Address = Address::new(0xFFFF_FFFF);
 
-        let mut address = TEXT_START;
-        if program.text_section.blocks.is_empty() {
-            panic!("Invalid program: no .text code blocks found");
-        }
-        let text_start_address = address;
-        let mut text_label_address: Address = text_start_address;
-        for block in &program.text_section.blocks {
-            if !block.label.is_empty() {
-                labels.insert(block.label.clone(), text_label_address);
-            }
-            text_label_address += block.instructions.len() * Instruction::size();
-        }
-        let text_instructions = program.text_section.instructions_move();
-        address += text_instructions.len() * Instruction::size();
-        let text_end_address = address; // - Instruction::size().into();
-        assert!(
-            text_instructions.len()
-                == ((text_end_address - text_start_address) / Instruction::size() as u32) as usize
-        );
-        let text_segment: MemorySegment<Instruction> = MemorySegment {
-            name: ".text".to_string(),
-            start_address: text_start_address,
-            end_address: text_end_address,
-            read_handler: None,
-            write_handler: None,
-        };
-        page_table.ensure_pages(
-            text_segment.start_address.page_number(),
-            text_segment.end_address.page_number(),
-            ProtectionLevel::Write,
-        );
-        page_table
-            .write_bytes(
-                text_segment.start_address,
-                &text_instructions
-                    .iter()
-                    .flat_map(|_| 0xC0DEu32.to_le_bytes())
-                    .collect::<Vec<u8>>(),
-            )
-            .unwrap();
-        page_table.set_protections(
-            text_segment.start_address.page_number(),
-            text_segment.end_address.page_number(),
-            ProtectionLevel::ReadExecute,
-        );
-        assert!(address <= TEXT_MAX, "Out of memory: text section");
-
-        address = ANY_DATA_START;
+        // =========== .data section =========== //
+        let mut address = ANY_DATA_START;
         let data_start_address = address;
+        let mut data_end_address = data_start_address;
         let data = if !program.data_section.empty() {
             let data_initialized = program.data_section.initialized_static_move();
             let mut data_label_address: Address = data_start_address;
@@ -332,7 +290,7 @@ impl Memory {
                 .flat_map(|rd| rd.data)
                 .collect();
             address += data_raw_initialized.len();
-            let data_end_address = address;
+            data_end_address = address;
             assert!(data_raw_initialized.len() == (data_end_address - data_start_address) as usize);
             let data = MemorySegment {
                 name: ".data".to_string(),
@@ -357,7 +315,65 @@ impl Memory {
             None
         };
 
-        let heap_start_address = address; // Begin at the end of the .data section
+        // =========== .text section =========== //
+        // Initialize the text section after .data
+        // because of label address dependencies
+        // during instruction encoding/assembly.
+        address = TEXT_START;
+        if program.text_section.blocks.is_empty() {
+            panic!("Invalid program: no .text code blocks found");
+        }
+        let text_start_address = address;
+        let mut text_label_address: Address = text_start_address;
+        for block in &program.text_section.blocks {
+            if !block.label.is_empty() {
+                labels.insert(block.label.clone(), text_label_address);
+            }
+            text_label_address += block.instructions.len() * Instruction::size();
+        }
+        let text_instructions = program.text_section.instructions_move();
+        address += text_instructions.len() * Instruction::size();
+        let text_end_address = address;
+        assert!(
+            text_instructions.len()
+                == ((text_end_address - text_start_address) / Instruction::size() as u32) as usize
+        );
+        let text_segment: MemorySegment<Instruction> = MemorySegment {
+            name: ".text".to_string(),
+            start_address: text_start_address,
+            end_address: text_end_address,
+            read_handler: None,
+            write_handler: None,
+        };
+        page_table.ensure_pages(
+            text_segment.start_address.page_number(),
+            text_segment.end_address.page_number(),
+            ProtectionLevel::Write,
+        );
+        // Assemble instructions into raw machine code bytes
+        let encoded_instructions = assemble_all(&text_instructions, &labels);
+        let raw_instructions = encoded_instructions
+            .into_iter()
+            .flat_map(|x| x.to_le_bytes())
+            .collect::<Vec<u8>>();
+        assert!(
+            raw_instructions.len() == (text_end_address - text_start_address) as usize,
+            "Invalid instruction size: {}, expected {}",
+            raw_instructions.len(),
+            (text_end_address - text_start_address) as usize
+        );
+        page_table
+            .write_bytes(text_segment.start_address, &raw_instructions)
+            .unwrap();
+        page_table.set_protections(
+            text_segment.start_address.page_number(),
+            text_segment.end_address.page_number(),
+            ProtectionLevel::ReadExecute,
+        );
+        assert!(address <= TEXT_MAX, "Out of memory: text section");
+
+        // =========== .heap section =========== //
+        let heap_start_address = data_end_address; // Begin at the end of the .data section
         let heap = MemorySegment {
             name: ".heap".to_string(),
             start_address: heap_start_address,
@@ -373,6 +389,7 @@ impl Memory {
         log::trace!("Heap section: {:?}", &heap);
         sections.insert(heap.start_address, heap);
 
+        // =========== .stack section =========== //
         // Stack grows downwards from the top of the dynamic data segment
         let stack_start_address = ANY_DATA_END;
         let stack = MemorySegment {
@@ -390,6 +407,7 @@ impl Memory {
         log::trace!("Stack section: {:?}", &stack);
         sections.insert(stack.start_address, stack);
 
+        // =========== other sections =========== //
         // Memory-mapped I/O (MMIO) devices
         for mmio in mmio {
             assert!(
@@ -737,52 +755,57 @@ impl Memory {
 
     /// Dump all the memory contents into a vector of bytes.
     /// This is used for debugging purposes.
-    pub fn dump(&self, compress: bool) -> Vec<u8> {
-        const SHARD_SIZE: usize = 128; // Contiguous memory of non-zero bytes
+    pub fn dump(&self, compress: bool, shard_size: usize) -> Vec<u8> {
+        assert!(
+            PAGE_SIZE % shard_size == 0,
+            "Shard size must be a divisor of PAGE_SIZE"
+        );
+        assert!(shard_size % 4 == 0, "Shard size must be multiple of 4");
+        assert!(
+            shard_size <= PAGE_SIZE,
+            "Shard size must be less than PAGE_SIZE"
+        );
+        assert!(shard_size > 0, "Shard size must be greater than 0");
         log::trace!("Dumping memory contents...");
         log::trace!("Compress: {}", compress);
         let mut buf = Vec::new();
-        let text_end = self.text_segment.end_address.unwrap() as usize;
-        let text_start = self.text_segment.start_address.unwrap() as usize;
-        const CODE_SHARD: [u8; Instruction::size()] = [0xCC, 0x00, 0xDD, 0xEE];
-
-        if compress {
-            // Only include non-zero instruction shards
-            for _ in (text_start..text_end).step_by(Instruction::size()) {
-                buf.extend_from_slice(&CODE_SHARD);
-            }
-        } else {
-            // Fill in text section with 0xFF
-            if buf.len() < text_end {
-                buf.resize(text_end, 0);
-            }
-            (text_start..text_end)
-                .step_by(Instruction::size())
-                .for_each(|i| {
-                    buf[i..Instruction::size()].copy_from_slice(&CODE_SHARD);
-                });
-        }
         // Iterate through all allocated memory pages
         let mut page_numbers_sorted = self.page_table.pages.keys().collect::<Vec<_>>();
         page_numbers_sorted.sort();
         for page_number in page_numbers_sorted {
+            if let Some(section) = self.sections.get(&Address::from_page_number(*page_number)) {
+                log::trace!(
+                    "{} section: {} - {} ({} bytes)",
+                    section.name,
+                    section.start_address,
+                    section.end_address,
+                    section.end_address - section.start_address
+                );
+            }
             let page = self.page_table.get_page(*page_number).unwrap();
-            assert!(PAGE_SIZE % SHARD_SIZE == 0); // Must be multiple of SHARD_SIZE
             let mut start = Address::from_page_number(*page_number).unwrap() as usize;
-            for shard in page.data.chunks(SHARD_SIZE) {
+            for shard in page.data.chunks(shard_size) {
                 // only dump non-zero shards
                 if compress {
                     // Don't resize the buffer if compressing
                     if shard.iter().any(|&b| b != 0) {
+                        log::trace!(
+                            "Raw bytes:\n{}",
+                            shard
+                                .iter()
+                                .map(|b| format!("{:02x}", b))
+                                .collect::<Vec<_>>()
+                                .join(" ")
+                        );
                         buf.extend_from_slice(shard);
                     }
                 } else {
-                    let end = start + SHARD_SIZE;
+                    let end = start + shard_size;
                     if buf.len() < end {
                         buf.resize(end, 0);
                     }
                     buf[start..end].copy_from_slice(shard);
-                    start += SHARD_SIZE;
+                    start += shard_size;
                 }
             }
         }
