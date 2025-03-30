@@ -101,7 +101,7 @@ impl InstructionInfo {
 }
 pub fn assemble_all(instructions: &[Instruction], labels: &LabelMap) -> Vec<EncodedInstruction> {
     instructions
-        .into_iter()
+        .iter()
         .map(|i| encode_instruction(i, labels))
         .collect()
 }
