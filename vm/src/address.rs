@@ -261,6 +261,6 @@ impl SubAssign<usize> for Address {
 
 impl Display for Address {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "0x{:08x}", self.0)
+        write!(f, "0x{:08X}", self.0)
     }
 }

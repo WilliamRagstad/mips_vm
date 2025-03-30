@@ -774,17 +774,29 @@ impl Memory {
         let mut page_numbers_sorted = self.page_table.pages.keys().collect::<Vec<_>>();
         page_numbers_sorted.sort();
         for page_number in page_numbers_sorted {
-            if let Some(section) = self.sections.get(&Address::from_page_number(*page_number)) {
+            let page_address = Address::from_page_number(*page_number);
+            let max_data_size = if let Some(section) = self.sections.get(&page_address) {
                 log::trace!(
-                    "{} section: {} - {} ({} bytes)",
+                    "{} section: {} - {} ({} bytes, page {})",
                     section.name,
                     section.start_address,
                     section.end_address,
-                    section.end_address - section.start_address
+                    section.end_address - section.start_address,
+                    page_number
                 );
-            }
+                (section.end_address - section.start_address) as usize
+            } else {
+                log::trace!(
+                    "Unknown section: {} - {} ({} bytes, page {})",
+                    page_address,
+                    page_address + PAGE_SIZE,
+                    PAGE_SIZE,
+                    page_number
+                );
+                PAGE_SIZE
+            };
             let page = self.page_table.get_page(*page_number).unwrap();
-            let mut start = Address::from_page_number(*page_number).unwrap() as usize;
+            let mut start = page_address.unwrap() as usize;
             for shard in page.data.chunks(shard_size) {
                 // only dump non-zero shards
                 if compress {
@@ -794,7 +806,8 @@ impl Memory {
                             "Raw bytes:\n{}",
                             shard
                                 .iter()
-                                .map(|b| format!("{:02x}", b))
+                                .take(max_data_size)
+                                .map(|b| format!("{:02X}", b))
                                 .collect::<Vec<_>>()
                                 .join(" ")
                         );
