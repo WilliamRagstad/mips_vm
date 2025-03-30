@@ -186,19 +186,19 @@ impl PageTable {
     }
 }
 
-type ReadHandler<T> = fn(Address) -> T;
-type WriteHandler<T> = fn(Address, T);
+type ReadHandler = fn(Address) -> u8;
+type WriteHandler = fn(Address, u8);
 
 /// Memory paging is a memory management scheme that eliminates the need for
 /// contiguous allocation of physical memory.
 #[derive(Debug, Default)]
-pub struct MemorySegment<T> {
+pub struct MemorySegment {
     #[allow(dead_code)]
     name: String,
     pub start_address: Address,
     pub end_address: Address,
-    read_handler: Option<ReadHandler<T>>,
-    write_handler: Option<WriteHandler<T>>,
+    read_handler: Option<ReadHandler>,
+    write_handler: Option<WriteHandler>,
 }
 
 pub type LabelMap = HashMap<String, Address>;
@@ -227,10 +227,10 @@ pub struct Memory {
     /// This is used to store the mapping of all address of labels in the original program.
     labels: LabelMap,
     /// Sections of memory with their start address as the key.
-    sections: HashMap<Address, MemorySegment<u8>>,
+    sections: HashMap<Address, MemorySegment>,
     /// Text section: contains the program's instructions
     /// This section is read-only and executable (code).
-    text_segment: MemorySegment<Instruction>,
+    text: Address,
     text_instructions: Vec<Instruction>,
     /// Data section: contains initialized data
     /// This section is read-write and typically contains global variables.
@@ -261,7 +261,7 @@ impl Memory {
     /// - `.bss` section: read-write and is used for uninitialized data. (**Higher addresses**)
     /// - `.heap` section: read-write and is used for dynamic memory allocation from the dynamically allocated memory. (**Second-to-highest addresses**)
     /// - `.stack` section: read-write and is used for function calls and local variables from the stack. (**Highest addresses**)
-    pub fn load(program: Program, mmio: Vec<MemorySegment<u8>>) -> Self {
+    pub fn load(program: Program, mmio: Vec<MemorySegment>) -> Self {
         let mut page_table = PageTable::default();
         let mut labels: LabelMap = LabelMap::new();
         let mut sections = HashMap::new();
@@ -338,7 +338,7 @@ impl Memory {
             text_instructions.len()
                 == ((text_end_address - text_start_address) / Instruction::size() as u32) as usize
         );
-        let text_segment: MemorySegment<Instruction> = MemorySegment {
+        let text = MemorySegment {
             name: ".text".to_string(),
             start_address: text_start_address,
             end_address: text_end_address,
@@ -346,8 +346,8 @@ impl Memory {
             write_handler: None,
         };
         page_table.ensure_pages(
-            text_segment.start_address.page_number(),
-            text_segment.end_address.page_number(),
+            text.start_address.page_number(),
+            text.end_address.page_number(),
             ProtectionLevel::Write,
         );
         // Assemble instructions into raw machine code bytes
@@ -363,14 +363,15 @@ impl Memory {
             (text_end_address - text_start_address) as usize
         );
         page_table
-            .write_bytes(text_segment.start_address, &raw_instructions)
+            .write_bytes(text.start_address, &raw_instructions)
             .unwrap();
         page_table.set_protections(
-            text_segment.start_address.page_number(),
-            text_segment.end_address.page_number(),
+            text.start_address.page_number(),
+            text.end_address.page_number(),
             ProtectionLevel::ReadExecute,
         );
         assert!(address <= TEXT_MAX, "Out of memory: text section");
+        sections.insert(text.start_address, text);
 
         // =========== .heap section =========== //
         let heap_start_address = data_end_address; // Begin at the end of the .data section
@@ -435,7 +436,7 @@ impl Memory {
             page_table,
             labels,
             sections,
-            text_segment,
+            text: text_start_address,
             text_instructions,
             data,
             heap: heap_start_address,
@@ -443,7 +444,7 @@ impl Memory {
         }
     }
 
-    pub fn add_section(&mut self, section: MemorySegment<u8>) {
+    pub fn add_section(&mut self, section: MemorySegment) {
         self.sections.insert(section.start_address, section);
     }
 
@@ -461,7 +462,7 @@ impl Memory {
             .ok_or(MemoryError::InvalidAddress)
     }
 
-    pub fn find_section(&self, address: Address) -> Result<&MemorySegment<u8>> {
+    pub fn find_section(&self, address: Address) -> Result<&MemorySegment> {
         self.sections
             .values()
             .find(|section| section.start_address <= address && address <= section.end_address)
@@ -474,7 +475,7 @@ impl Memory {
     /// Write the result into the memory address location at `self.data`.
     fn mmio_try_read_to(
         &mut self,
-        read_handler: Option<ReadHandler<u8>>,
+        read_handler: Option<ReadHandler>,
         address: Address,
         size: usize,
     ) -> Result<Option<Vec<u8>>> {
@@ -494,7 +495,7 @@ impl Memory {
     /// This is used to write to a memory-mapped I/O device.
     fn mmio_try_write_to(
         &mut self,
-        write_handler: Option<WriteHandler<u8>>,
+        write_handler: Option<WriteHandler>,
         address: Address,
         bytes: &[u8],
     ) -> Result<()> {
@@ -600,9 +601,9 @@ impl Memory {
 
     /// Currently, only the text section will be executable
     pub fn execute(&self, address: Address) -> Result<&Instruction> {
-        if self.text_segment.start_address <= address && address <= self.text_segment.end_address {
+        if self.text().start_address <= address && address <= self.text().end_address {
             // TODO: Improve finding the instruction by address performance
-            let index = (address - self.text_segment.start_address) as usize / Instruction::size();
+            let index = (address - self.text().start_address) as usize / Instruction::size();
             let Some(page) = self.page_table.get_page(address.page_number()) else {
                 return Err(MemoryError::SegmentFault);
             };
@@ -627,31 +628,31 @@ impl Memory {
         &self.labels
     }
 
-    pub fn text(&self) -> &MemorySegment<Instruction> {
-        &self.text_segment
+    pub fn text(&self) -> &MemorySegment {
+        self.sections.get(&self.text).unwrap()
     }
 
-    pub fn data(&self) -> Option<&MemorySegment<u8>> {
+    pub fn data(&self) -> Option<&MemorySegment> {
         self.sections.get(&self.data?)
     }
 
-    pub fn data_mut(&mut self) -> Option<&mut MemorySegment<u8>> {
+    pub fn data_mut(&mut self) -> Option<&mut MemorySegment> {
         self.sections.get_mut(&self.data?)
     }
 
-    pub fn heap(&self) -> &MemorySegment<u8> {
+    pub fn heap(&self) -> &MemorySegment {
         self.sections.get(&self.heap).unwrap()
     }
 
-    pub fn heap_mut(&mut self) -> &mut MemorySegment<u8> {
+    pub fn heap_mut(&mut self) -> &mut MemorySegment {
         self.sections.get_mut(&self.heap).unwrap()
     }
 
-    pub fn stack(&self) -> &MemorySegment<u8> {
+    pub fn stack(&self) -> &MemorySegment {
         self.sections.get(&self.stack).unwrap()
     }
 
-    pub fn stack_mut(&mut self) -> &mut MemorySegment<u8> {
+    pub fn stack_mut(&mut self) -> &mut MemorySegment {
         self.sections.get_mut(&self.stack).unwrap()
     }
 

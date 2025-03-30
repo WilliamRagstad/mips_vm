@@ -14,7 +14,7 @@ pub struct VM {
 }
 
 impl VM {
-    pub fn new(program: Program, mmio: Vec<MemorySegment<u8>>) -> Self {
+    pub fn new(program: Program, mmio: Vec<MemorySegment>) -> Self {
         log::debug!(
             "{}\n{}",
             "======= LOADED PROGRAM =======".blue(),
