@@ -797,6 +797,7 @@ impl Memory {
             };
             let page = self.page_table.get_page(*page_number).unwrap();
             let mut start = page_address.unwrap() as usize;
+            let mut is_empty = true;
             for shard in page.data.chunks(shard_size) {
                 // only dump non-zero shards
                 if compress {
@@ -812,6 +813,7 @@ impl Memory {
                                 .join(" ")
                         );
                         buf.extend_from_slice(shard);
+                        is_empty = false;
                     }
                 } else {
                     let end = start + shard_size;
@@ -821,6 +823,9 @@ impl Memory {
                     buf[start..end].copy_from_slice(shard);
                     start += shard_size;
                 }
+            }
+            if is_empty {
+                log::trace!("No non-zero bytes allocated (skipping page dump)");
             }
         }
         buf
