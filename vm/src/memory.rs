@@ -3,6 +3,7 @@ use std::{collections::HashMap, mem::size_of};
 use crate::address::Address;
 use crate::assembler::assemble_all;
 use crate::program::{Instruction, Program, Word};
+use std::fmt::Debug;
 
 #[derive(Debug, PartialEq)]
 pub enum MemoryError {
@@ -63,10 +64,19 @@ const PAGE_SIZE: usize = 4096; // 4KB
 
 /// A page is a fixed-length contiguous block of virtual memory, described by a single entry in the page table.
 /// It is the smallest unit of data for memory management in a virtual memory system.
-#[derive(Debug)]
 struct Page {
     data: [u8; PAGE_SIZE],
     protection: ProtectionLevel,
+}
+
+impl Debug for Page {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Page")
+            .field("size", &self.data.len())
+            .field("nonZero", &self.data.iter().filter(|b| **b != 0).count())
+            .field("protection", &self.protection)
+            .finish()
+    }
 }
 
 /// A page table is the data structure used by a virtual memory system in an operating system to store the mapping between virtual addresses and physical addresses.
@@ -75,14 +85,14 @@ struct Page {
 /// The page table is stored in memory and is managed by the operating system.
 #[derive(Debug, Default)]
 struct PageTable {
-    pages: HashMap<u32, Page>,
+    pages: HashMap<Address, Page>,
 }
 
 impl PageTable {
     /// Insert a page into the page table.
     pub fn insert_page(&mut self, page_number: u32, protection: ProtectionLevel) {
         self.pages.insert(
-            page_number,
+            Address::from_page_number(page_number),
             Page {
                 data: [0; PAGE_SIZE],
                 protection,
@@ -92,11 +102,12 @@ impl PageTable {
 
     pub fn ensure_pages(&mut self, start_page: u32, end_page: u32, protection: ProtectionLevel) {
         for page_number in start_page..=end_page {
-            if !self.pages.contains_key(&page_number) {
+            let page_address = Address::from_page_number(page_number);
+            if !self.pages.contains_key(&page_address) {
                 self.insert_page(page_number, protection.clone());
             }
             // Verify that the exising page has the correct protection level
-            if let Some(page) = self.pages.get(&page_number) {
+            if let Some(page) = self.pages.get(&page_address) {
                 if page.protection != protection {
                     panic!(
                         "Page protection mismatch: {:?} != {:?}",
@@ -108,7 +119,7 @@ impl PageTable {
     }
 
     pub fn set_protection(&mut self, page_number: u32, protection: ProtectionLevel) {
-        if let Some(page) = self.pages.get_mut(&page_number) {
+        if let Some(page) = self.pages.get_mut(&Address::from_page_number(page_number)) {
             page.protection = protection;
         }
     }
@@ -121,12 +132,12 @@ impl PageTable {
 
     /// Get a mutable reference to the page for a given page number.
     pub fn get_page_mut(&mut self, page_number: u32) -> Option<&mut Page> {
-        self.pages.get_mut(&page_number)
+        self.pages.get_mut(&Address::from_page_number(page_number))
     }
 
     /// Get an immutable reference to the page for a given page number.
     pub fn get_page(&self, page_number: u32) -> Option<&Page> {
-        self.pages.get(&page_number)
+        self.pages.get(&Address::from_page_number(page_number))
     }
 
     /// Write data to one or more pages in the page table.
@@ -773,8 +784,8 @@ impl Memory {
         // Iterate through all allocated memory pages
         let mut page_numbers_sorted = self.page_table.pages.keys().collect::<Vec<_>>();
         page_numbers_sorted.sort();
-        for page_number in page_numbers_sorted {
-            let page_address = Address::from_page_number(*page_number);
+        for page_address in page_numbers_sorted {
+            let page_number = page_address.page_number();
             let max_data_size = if let Some(section) = self.sections.get(&page_address) {
                 log::trace!(
                     "{} section: {} - {} ({} bytes, page {})",
@@ -789,13 +800,13 @@ impl Memory {
                 log::trace!(
                     "Unknown section: {} - {} ({} bytes, page {})",
                     page_address,
-                    page_address + PAGE_SIZE,
+                    *page_address + PAGE_SIZE,
                     PAGE_SIZE,
                     page_number
                 );
                 PAGE_SIZE
             };
-            let page = self.page_table.get_page(*page_number).unwrap();
+            let page = self.page_table.get_page(page_number).unwrap();
             let mut start = page_address.unwrap() as usize;
             let mut is_empty = true;
             for shard in page.data.chunks(shard_size) {

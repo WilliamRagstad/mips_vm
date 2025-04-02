@@ -1,5 +1,5 @@
 use std::{
-    fmt::Display,
+    fmt::{Debug, Display},
     ops::{Add, AddAssign, Sub, SubAssign},
 };
 
@@ -11,7 +11,7 @@ use colorful::{Color, Colorful};
 /// utility methods to work with these addresses, including conversion to and
 /// from little-endian byte arrays, calculating page numbers, and formatting
 /// the address for display.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
 pub struct Address(u32);
 
 impl Address {
@@ -100,7 +100,7 @@ impl Address {
     ///
     /// A string representing the address in hexadecimal format.
     pub fn show(&self) -> String {
-        format!("0x{:08x}", self.0)
+        format!("0x{:08X}", self.0)
     }
 
     /// Returns a colored string representation of the address in hexadecimal format.
@@ -109,9 +109,15 @@ impl Address {
     ///
     /// A colored string representing the address in hexadecimal format.
     pub fn show_color(&self) -> String {
-        format!("0x{:08x}", self.0)
+        format!("0x{:08X}", self.0)
             .color(Color::LightBlue)
             .to_string()
+    }
+}
+
+impl Debug for Address {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.show())
     }
 }
 
