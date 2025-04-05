@@ -613,7 +613,6 @@ impl Memory {
     /// Currently, only the text section will be executable
     pub fn execute(&self, address: Address) -> Result<&Instruction> {
         if self.text().start_address <= address && address <= self.text().end_address {
-            // TODO: Improve finding the instruction by address performance
             let index = (address - self.text().start_address) as usize / Instruction::size();
             let Some(page) = self.page_table.get_page(address.page_number()) else {
                 return Err(MemoryError::SegmentFault);
@@ -625,11 +624,6 @@ impl Memory {
             } else {
                 Err(MemoryError::ProtectionFault)
             }
-            // self.text
-            //     .execute()
-            //     .iter()
-            //     .find(|i| i.address == address)
-            //     .ok_or(MemoryError::InvalidInstruction)
         } else {
             Err(MemoryError::ProtectionFault)
         }
@@ -786,7 +780,7 @@ impl Memory {
         page_numbers_sorted.sort();
         for page_address in page_numbers_sorted {
             let page_number = page_address.page_number();
-            let max_data_size = if let Some(section) = self.sections.get(&page_address) {
+            let max_data_size = if let Some(section) = self.sections.get(page_address) {
                 log::trace!(
                     "{} section: {} - {} ({} bytes, page {})",
                     section.name,
