@@ -366,13 +366,15 @@ pub fn info(instruction: &Instruction, labels: &LabelMap) -> InstructionInfo {
 
 pub fn encode_instruction(instruction: &Instruction, labels: &LabelMap) -> EncodedInstruction {
     let info = info(instruction, labels);
-    if info.format.is_register() {
+    let encoded = if info.format.is_register() {
         encode_register_type(&info, info.format.unwrap_register())
     } else if info.format.is_immediate() {
         encode_immediate_type(&info, info.format.unwrap_immediate())
     } else {
         encode_jump_type(&info, info.format.unwrap_jump())
-    }
+    };
+    log::trace!("Encoded {:?} into 0x{:08x}", instruction, encoded);
+    encoded
 }
 
 /// Encode R-type instruction.

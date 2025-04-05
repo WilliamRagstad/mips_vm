@@ -64,8 +64,10 @@ impl VM {
                 .execute(pc)
                 .unwrap_or_else(|_| panic!("No instruction found at address {}", pc))
                 .clone();
+            let instruction_code = self.memory.read_word(pc).unwrap();
             log::debug!(
-                "Executing instruction at {}: {}",
+                "Executing instruction 0x{:08x} at {}: {}",
+                instruction_code,
                 pc,
                 instruction.show_color()
             );
