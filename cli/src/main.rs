@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use mips_vm::{parser::parse, vm::VM};
+use mips_vm::{memory::PAGE_SIZE, parser::parse, vm::VM};
 
 mod mmio;
 
@@ -19,6 +19,9 @@ enum Commands {
     Compile {
         /// Input file to compile
         input: String,
+        /// Output file for the compiled program
+        #[arg(short, long)]
+        output: Option<String>,
     },
     /// Run the input file
     #[command(name = "run", alias = "r")]
@@ -42,11 +45,24 @@ fn main() {
     let args = Cli::parse();
 
     match args.command {
-        Commands::Compile { input } => {
-            let input_content = std::fs::read_to_string(input).expect("Failed to read input file");
+        Commands::Compile { input, output } => {
+            let input_content = std::fs::read_to_string(&input).expect("Failed to read input file");
             if let Some(program) = parse(&input_content) {
-                println!("Compilation successful!");
-                // Add any additional compilation logic here
+                let mmio = Vec::new();
+                let vm = VM::new(program, mmio);
+                let output = if let Some(output) = output {
+                    std::path::PathBuf::from(output)
+                } else {
+                    let mut path = std::path::PathBuf::from(input);
+                    path.set_extension("bin");
+                    path
+                };
+                let dump = vm.memory().dump(true, PAGE_SIZE >> 5, true);
+                std::fs::write(&output, dump).unwrap();
+                println!(
+                    "Compilation successful! Output written to {}",
+                    output.display()
+                );
             } else {
                 eprintln!("Failed to compile the input file.");
             }
@@ -63,7 +79,7 @@ fn main() {
                 let mut vm = VM::new(program, mmio);
 
                 if let Some(dump_file) = dump_file {
-                    let dump = vm.memory().dump(!non_compressed, shard_size);
+                    let dump = vm.memory().dump(!non_compressed, shard_size, false);
                     let dump_path = std::path::PathBuf::from(dump_file);
                     std::fs::write(&dump_path, dump).unwrap();
                 }

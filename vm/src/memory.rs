@@ -60,7 +60,7 @@ impl ProtectionLevel {
 
 /// The size of a page in bytes.
 /// For MIPS32, the page size is 4KB (4096 bytes).
-const PAGE_SIZE: usize = 4096; // 4KB
+pub const PAGE_SIZE: usize = 4096; // 4KB
 
 /// A page is a fixed-length contiguous block of virtual memory, described by a single entry in the page table.
 /// It is the smallest unit of data for memory management in a virtual memory system.
@@ -761,7 +761,7 @@ impl Memory {
 
     /// Dump all the memory contents into a vector of bytes.
     /// This is used for debugging purposes.
-    pub fn dump(&self, compress: bool, shard_size: usize) -> Vec<u8> {
+    pub fn dump(&self, compress: bool, shard_size: usize, static_only: bool) -> Vec<u8> {
         assert!(
             PAGE_SIZE % shard_size == 0,
             "Shard size must be a divisor of PAGE_SIZE"
@@ -781,6 +781,17 @@ impl Memory {
         for page_address in page_numbers_sorted {
             let page_number = page_address.page_number();
             let max_data_size = if let Some(section) = self.sections.get(page_address) {
+                if static_only && (section.name != ".text" && section.name != ".data") {
+                    log::trace!(
+                        "Skipping section {}: {} - {} ({} bytes, page {})",
+                        section.name,
+                        section.start_address,
+                        section.end_address,
+                        section.end_address - section.start_address,
+                        page_number
+                    );
+                    continue;
+                }
                 log::trace!(
                     "{} section: {} - {} ({} bytes, page {})",
                     section.name,
@@ -791,6 +802,16 @@ impl Memory {
                 );
                 (section.end_address - section.start_address) as usize
             } else {
+                if static_only {
+                    log::trace!(
+                        "Skipping unknown section: {} - {} ({} bytes, page {})",
+                        page_address,
+                        *page_address + PAGE_SIZE,
+                        PAGE_SIZE,
+                        page_number
+                    );
+                    continue;
+                }
                 log::trace!(
                     "Unknown section: {} - {} ({} bytes, page {})",
                     page_address,
