@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use mips_vm::{memory::PAGE_SIZE, parser::parse, vm::VM};
+use mips_vm::{compiler::Compiler, parser::parse, vm::VM};
 
 mod mmio;
 
@@ -12,6 +12,23 @@ struct Cli {
     command: Commands,
 }
 
+#[derive(clap::ValueEnum, Clone, Debug)]
+#[clap(rename_all = "lower")]
+enum Target {
+    #[allow(clippy::upper_case_acronyms)]
+    ELF,
+    PE,
+}
+
+impl From<Target> for mips_vm::compiler::Target {
+    fn from(target: Target) -> Self {
+        match target {
+            Target::ELF => mips_vm::compiler::Target::ELF,
+            Target::PE => mips_vm::compiler::Target::PE,
+        }
+    }
+}
+
 #[derive(Subcommand)]
 enum Commands {
     /// Compile the input file
@@ -22,6 +39,9 @@ enum Commands {
         /// Output file for the compiled program
         #[arg(short, long)]
         output: Option<String>,
+        /// Target file format.
+        #[arg(short, long, value_enum)]
+        target: Target,
     },
     /// Run the input file
     #[command(name = "run", alias = "r")]
@@ -43,13 +63,14 @@ enum Commands {
 fn main() {
     log_init();
     let args = Cli::parse();
-
     match args.command {
-        Commands::Compile { input, output } => {
+        Commands::Compile {
+            input,
+            output,
+            target,
+        } => {
             let input_content = std::fs::read_to_string(&input).expect("Failed to read input file");
             if let Some(program) = parse(&input_content) {
-                let mmio = Vec::new();
-                let vm = VM::new(program, mmio);
                 let output = if let Some(output) = output {
                     std::path::PathBuf::from(output)
                 } else {
@@ -57,8 +78,10 @@ fn main() {
                     path.set_extension("bin");
                     path
                 };
-                let dump = vm.memory().dump(true, PAGE_SIZE >> 5, true);
-                std::fs::write(&output, dump).unwrap();
+                let compiler = Compiler::new(program);
+                compiler
+                    .compile(target.into(), &output)
+                    .expect("Failed to compile");
                 println!(
                     "Compilation successful! Output written to {}",
                     output.display()
@@ -77,13 +100,11 @@ fn main() {
             if let Some(program) = parse(&input_content) {
                 let mmio = Vec::new();
                 let mut vm = VM::new(program, mmio);
-
                 if let Some(dump_file) = dump_file {
                     let dump = vm.memory().dump(!non_compressed, shard_size, false);
                     let dump_path = std::path::PathBuf::from(dump_file);
                     std::fs::write(&dump_path, dump).unwrap();
                 }
-
                 vm.execute(vm.entrypoint().expect("No entrypoint found"));
             }
         }
