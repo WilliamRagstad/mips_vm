@@ -1,0 +1,23 @@
+[package]
+name = "mips-vm"
+version = "0.1.0"
+edition = "2021"
+description = "MIPS virtual machine core library (CPU, memory, loader, traps)"
+authors = ["Your Name <your.email@example.com>"]
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+mips-isa = { path = "../mips-isa" }
+mips-elf = { path = "../mips-elf" }
+mips-util = { path = "../mips-util" }
+colorful = { workspace = true }
+env_logger = { workspace = true }
+log = { workspace = true }
+thiserror = { workspace = true }
+# Efficient stack-allocated vectors for register files
+smallvec = { workspace = true }
+# Fast hash maps for symbol tables and breakpoints
+hashbrown = { workspace = true }
+# Keep pest temporarily for existing grammar files during migration (updated to latest)
+pest = "2.8.2"
+pest_derive = "2.8.2"

@@ -1,0 +1,15 @@
+[package]
+name = "mips-isa"
+version = "0.1.0"
+edition = "2021"
+description = "MIPS instruction set architecture definitions (opcodes, decoder, disassembly tables)"
+authors = ["Your Name <your.email@example.com>"]
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+mips-util = { path = "../mips-util" }
+thiserror = { workspace = true }
+# Modern bitfield operations for instruction decoding/encoding
+bitvec = { workspace = true }
+# Perfect hash maps for efficient opcode -> mnemonic mappings
+phf = { workspace = true, features = ["macros"] }

@@ -1,0 +1,110 @@
+// MIPS assembly grammar - Enhanced from existing mips-vm grammar
+
+program = { SOI ~ statement* ~ EOI }
+
+statement = _{ "\n"* ~ (directive | label | instruction) ~ "\n"+ }
+
+instruction       =  { (opcode | pseudo) ~ args? }
+label             =  { identifier ~ ":" ~ (data_directive ~ arg)? }
+directive         =  { section_directive | (data_directive ~ args) | (text_directive ~ arg) }
+section_directive = @{ ".data" | ".text" }
+data_directive    = @{ ".align" | ".asciiz" | ".ascii" | ".word" | ".byte" | ".space" }
+text_directive    = @{ ".global" | ".globl" }
+
+opcode = @{
+    "addi"
+  | "addiu"
+  | "addu"
+  | "add"
+  | "andi"
+  | "and"
+  | "beq"
+  | "bne"
+  | "jalr"
+  | "jal"
+  | "jr"
+  | "j"
+  | "lbu"
+  | "lb"
+  | "lui"
+  | "lw"
+  | "mul"
+  | "nor"
+  | "ori"
+  | "or"
+  | "sltu"
+  | "sltiu"
+  | "slti"
+  | "slt"
+  | "sllv"
+  | "sll"
+  | "sra"
+  | "srlv"
+  | "srl"
+  | "sb"
+  | "sw"
+  | "subu"
+  | "sub"
+  | "xori"
+  | "xor"
+}
+
+pseudo = @{
+    "li"
+  | "la"
+  | "move"
+  | "nop"
+  | "syscall"
+  | "hlt"
+}
+
+args =  { arg ~ ("," ~ arg)* }
+arg  = _{ register | memory_reference | immediate | identifier }
+
+register        = @{ "$" ~ (register_name | register_number) }
+register_name   = @{
+    "zero"
+  | "at"
+  | "v0"
+  | "v1"
+  | "a0"
+  | "a1"
+  | "a2"
+  | "a3"
+  | "t0"
+  | "t1"
+  | "t2"
+  | "t3"
+  | "t4"
+  | "t5"
+  | "t6"
+  | "t7"
+  | "s0"
+  | "s1"
+  | "s2"
+  | "s3"
+  | "s4"
+  | "s5"
+  | "s6"
+  | "s7"
+  | "t8"
+  | "t9"
+  | "k0"
+  | "k1"
+  | "gp"
+  | "sp"
+  | "fp"
+  | "ra"
+}
+register_number = @{ ASCII_DIGIT ~ ASCII_DIGIT? }
+
+immediate         = @{ hex_immediate | decimal_immediate }
+hex_immediate     = @{ "0x" ~ ASCII_HEX_DIGIT+ }
+decimal_immediate = @{ "-"? ~ ASCII_DIGIT+ }
+
+memory_reference = { immediate ~ "(" ~ register ~ ")" }
+
+identifier = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
+
+WHITESPACE = _{ " " | "\t" }
+COMMENT    = _{ "#" ~ (!NEWLINE ~ ANY)* }

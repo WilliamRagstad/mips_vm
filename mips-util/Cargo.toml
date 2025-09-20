@@ -1,0 +1,16 @@
+[package]
+name = "mips-util"
+version = "0.1.0"
+edition = "2021"
+description = "Shared utilities for MIPS toolchain (endianness, bitfields, logging)"
+authors = ["Your Name <your.email@example.com>"]
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+log = { workspace = true }
+env_logger = { workspace = true }
+# Error handling libraries
+anyhow = { workspace = true }      # For application error handling
+thiserror = { workspace = true }   # For library error type definitions
+# Endian-aware byte operations
+byteorder = { workspace = true }

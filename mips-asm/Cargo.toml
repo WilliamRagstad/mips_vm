@@ -1,0 +1,21 @@
+[package]
+name = "mips-asm"
+version = "0.1.0"
+edition = "2021"
+description = "MIPS assembler frontend that produces ET_REL or ET_EXEC ELF files"
+authors = ["Your Name <your.email@example.com>"]
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+mips-isa = { path = "../mips-isa" }
+mips-elf = { path = "../mips-elf" }
+mips-dwarf = { path = "../mips-dwarf" }
+mips-util = { path = "../mips-util" }
+thiserror = { workspace = true }
+# Modern lexer generator (procedural macro)
+logos = { workspace = true }
+# Parser combinator library for assembly syntax
+nom = { workspace = true }
+# Keep pest temporarily for migration compatibility (updated to latest)
+pest = "2.8.2"
+pest_derive = "2.8.2"

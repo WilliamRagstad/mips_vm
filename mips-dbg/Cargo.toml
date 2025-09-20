@@ -1,0 +1,23 @@
+[package]
+name = "mips-dbg"
+version = "0.1.0"
+edition = "2021"
+description = "TUI debugger for MIPS virtual machine (ncurses-like UI)"
+authors = ["Your Name <your.email@example.com>"]
+license = "MIT OR Apache-2.0"
+
+[[bin]]
+name = "mips-dbg"
+path = "src/main.rs"
+
+[dependencies]
+mips-vm = { path = "../mips-vm" }
+mips-elf = { path = "../mips-elf" }
+mips-isa = { path = "../mips-isa" }
+mips-util = { path = "../mips-util" }
+crossterm = "0.29.0"     # Updated to latest
+ratatui = "0.29.0"       # Updated to latest stable (not alpha)
+thiserror = { workspace = true }
+clap = { version = "4.5.48", features = ["derive"] }  # Updated to latest
+# DWARF parsing for source line information in debugger
+gimli = { workspace = true }

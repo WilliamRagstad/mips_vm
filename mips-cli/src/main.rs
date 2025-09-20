@@ -1,5 +1,7 @@
 use clap::{Parser, Subcommand};
 use mips_vm::{compiler::Compiler, parser::parse, vm::VM};
+use mips_asm::{parse_assembly, Assembler, AssemblerConfig};
+use mips_elf::ElfType;
 
 mod mmio;
 
@@ -20,6 +22,13 @@ enum Target {
     PE,
 }
 
+#[derive(clap::ValueEnum, Clone, Debug)]
+#[clap(rename_all = "lower")]
+enum OutputType {
+    Executable,
+    Relocatable,
+}
+
 impl From<Target> for mips_vm::compiler::Target {
     fn from(target: Target) -> Self {
         match target {
@@ -31,6 +40,18 @@ impl From<Target> for mips_vm::compiler::Target {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Assemble the input file using new assembler
+    #[command(name = "assemble", alias = "a")]
+    Assemble {
+        /// Input assembly file
+        input: String,
+        /// Output file for the assembled program
+        #[arg(short, long)]
+        output: Option<String>,
+        /// Output format (executable or relocatable)
+        #[arg(short = 't', long, value_enum)]
+        output_type: Option<OutputType>,
+    },
     /// Compile the input file
     #[command(name = "compile", alias = "c")]
     Compile {
@@ -64,6 +85,44 @@ fn main() {
     log_init();
     let args = Cli::parse();
     match args.command {
+        Commands::Assemble {
+            input,
+            output,
+            output_type,
+        } => {
+            let input_content = std::fs::read_to_string(&input).expect("Failed to read input file");
+            let parsed_program = parse_assembly(&input_content).expect("Failed to parse assembly");
+            
+            let output_type = output_type.unwrap_or(OutputType::Executable);
+            let elf_type = match output_type {
+                OutputType::Executable => ElfType::Executable,
+                OutputType::Relocatable => ElfType::Relocatable,
+            };
+            
+            let config = AssemblerConfig {
+                output_type: elf_type,
+                debug_info: false,
+                optimize: false,
+            };
+            
+            let mut assembler = Assembler::new(config);
+            let assembled = assembler.assemble(&parsed_program).expect("Failed to assemble");
+            
+            let output = if let Some(output) = output {
+                std::path::PathBuf::from(output)
+            } else {
+                let mut path = std::path::PathBuf::from(input);
+                path.set_extension("bin");
+                path
+            };
+            
+            std::fs::write(&output, &assembled.code).expect("Failed to write output file");
+            println!(
+                "Assembly successful! Output written to {} ({} bytes)",
+                output.display(),
+                assembled.code.len()
+            );
+        }
         Commands::Compile {
             input,
             output,

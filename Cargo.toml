@@ -1,8 +1,38 @@
 [workspace]
-members = ["cli", "vm"]
+members = [
+    "mips-isa",
+    "mips-elf",
+    "mips-dwarf",
+    "mips-asm",
+    "mips-link",
+    "mips-vm",
+    "mips-cli",
+    "mips-dbg",
+    "mips-util",
+]
 resolver = "2"
 
 [workspace.dependencies]
+# Existing workspace dependencies
 colorful = "0.3.2"
 env_logger = "0.11.7"
 log = "0.4.26"
+
+# Core infrastructure crates (UPDATED TO LATEST)
+anyhow = "1.0.100"       # Error handling for applications (was 1.0)
+thiserror = "2.0.16"     # Error type definitions for libraries (was 1.0) 
+byteorder = "1.5.0"      # Endian-aware byte operations (was 1.5)
+
+# Binary format handling (UPDATED TO LATEST)
+object = "0.37.3"        # ELF/object file read/write (was 0.36)
+gimli = "0.32.3"         # DWARF parsing (was 0.29)
+
+# ISA and parsing (UPDATED TO LATEST)
+bitvec = "1.0.1"         # Efficient bitfield operations (was 1.0)
+phf = "0.13.1"           # Perfect hash maps for opcode tables (was 0.11)
+logos = "0.15.1"         # Procedural macro lexer generator (was 0.14)
+nom = "8.0.0"            # Parser combinator library (was 7.1)
+
+# Performance optimizations (UPDATED TO LATEST)
+smallvec = "1.13.4"      # Stack-allocated vectors for register files (using stable, not alpha)
+hashbrown = "0.16.0"     # Fast hash maps (was 0.14)

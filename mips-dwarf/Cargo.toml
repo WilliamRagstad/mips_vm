@@ -1,0 +1,14 @@
+[package]
+name = "mips-dwarf"
+version = "0.1.0"
+edition = "2021"
+description = "Minimal DWARF v4 writer for debug information (line, info, abbrev, str)"
+authors = ["Your Name <your.email@example.com>"]
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+mips-util = { path = "../mips-util" }
+thiserror = { workspace = true }
+# Standard DWARF parser used by Rust's backtrace and debugging tools
+gimli = { workspace = true }
+# Note: For DWARF generation, you can implement a simple writer or use gimli's utilities

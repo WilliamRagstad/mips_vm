@@ -1,0 +1,20 @@
+[package]
+name = "mips-cli"
+version = "0.1.0"
+edition = "2021"
+description = "Command-line interface for running MIPS ELF binaries"
+authors = ["Your Name <your.email@example.com>"]
+license = "MIT OR Apache-2.0"
+
+[[bin]]
+name = "mips-cli"
+path = "src/main.rs"
+
+[dependencies]
+mips-vm = { path = "../mips-vm" }
+mips-asm = { path = "../mips-asm" }
+mips-elf = { path = "../mips-elf" }
+mips-util = { path = "../mips-util" }
+clap = { version = "4.5.48", features = ["derive"] }  # Updated to latest
+env_logger = { workspace = true }
+thiserror = { workspace = true }

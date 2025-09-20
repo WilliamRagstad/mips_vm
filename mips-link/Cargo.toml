@@ -1,0 +1,14 @@
+[package]
+name = "mips-link"
+version = "0.1.0"
+edition = "2021"
+description = "Static linker for MIPS (ET_REL -> ET_EXEC)"
+authors = ["Your Name <your.email@example.com>"]
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+mips-elf = { path = "../mips-elf" }
+mips-util = { path = "../mips-util" }
+thiserror = { workspace = true }
+# Industrial-strength object file handling for linker operations
+object = { workspace = true, features = ["read", "write", "elf"] }
