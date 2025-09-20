@@ -16,9 +16,10 @@ pub use opcodes::*;
 /// MIPS instruction formats
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InstructionFormat {
-    R, // Register format
-    I, // Immediate format
-    J, // Jump format
+    R,      // Register format
+    I,      // Immediate format
+    J,      // Jump format
+    Pseudo, // Pseudo instruction
 }
 
 /// Represents a decoded MIPS instruction
@@ -28,6 +29,9 @@ pub struct Instruction {
     pub format: InstructionFormat,
     pub raw: u32,
 }
+
+/// MIPS register identifier (0-31)
+pub type RegisterId = u32;
 
 /// Represents a 32-bit word in MIPS
 pub type Word = u32;

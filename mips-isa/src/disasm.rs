@@ -8,6 +8,7 @@ pub fn disassemble(instruction: &Instruction) -> String {
         crate::InstructionFormat::R => disassemble_r_type(instruction),
         crate::InstructionFormat::I => disassemble_i_type(instruction),
         crate::InstructionFormat::J => disassemble_j_type(instruction),
+        crate::InstructionFormat::Pseudo => disassemble_pseudo(instruction),
     }
 }
 
@@ -39,4 +40,9 @@ fn disassemble_j_type(instruction: &Instruction) -> String {
     let address = instruction.raw & 0x3FFFFFF;
 
     format!("j-type addr:{}", address)
+}
+
+fn disassemble_pseudo(instruction: &Instruction) -> String {
+    // Pseudo instructions don't have a standard encoding
+    format!("pseudo opcode:{}", instruction.opcode)
 }
