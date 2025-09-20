@@ -18,6 +18,8 @@ thiserror = { workspace = true }
 smallvec = { workspace = true }
 # Fast hash maps for symbol tables and breakpoints
 hashbrown = { workspace = true }
+# Fast hasher for hashbrown maps
+ahash = { workspace = true }
 # Keep pest temporarily for existing grammar files during migration (updated to latest)
 pest = "2.8.2"
 pest_derive = "2.8.2"

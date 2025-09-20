@@ -1,5 +1,8 @@
 //! MIPS opcodes and instruction definitions
 
+use bitvec::prelude::*;
+use phf::{phf_map, Map};
+
 /// MIPS R-type instruction function codes
 pub mod r_type {
     pub const SLL: u32 = 0x00;
@@ -67,42 +70,118 @@ pub mod j_type {
 /// Special opcode for R-type instructions
 pub const R_TYPE_OPCODE: u32 = 0x00;
 
-/// Get opcode from instruction word
+/// Perfect hash map for R-type function code to mnemonic mappings
+static R_TYPE_MNEMONICS: Map<u32, &'static str> = phf_map! {
+    0x00u32 => "sll",
+    0x02u32 => "srl",
+    0x03u32 => "sra",
+    0x04u32 => "sllv",
+    0x06u32 => "srlv",
+    0x07u32 => "srav",
+    0x08u32 => "jr",
+    0x09u32 => "jalr",
+    0x0Cu32 => "syscall",
+    0x10u32 => "mfhi",
+    0x11u32 => "mthi",
+    0x12u32 => "mflo",
+    0x13u32 => "mtlo",
+    0x18u32 => "mult",
+    0x19u32 => "multu",
+    0x1Au32 => "div",
+    0x1Bu32 => "divu",
+    0x20u32 => "add",
+    0x21u32 => "addu",
+    0x22u32 => "sub",
+    0x23u32 => "subu",
+    0x24u32 => "and",
+    0x25u32 => "or",
+    0x26u32 => "xor",
+    0x27u32 => "nor",
+    0x2Au32 => "slt",
+    0x2Bu32 => "sltu",
+};
+
+/// Perfect hash map for I-type opcode to mnemonic mappings  
+static I_TYPE_MNEMONICS: Map<u32, &'static str> = phf_map! {
+    0x01u32 => "bltz", // Also bgez - would need rt field to disambiguate
+    0x02u32 => "j",
+    0x03u32 => "jal",
+    0x04u32 => "beq",
+    0x05u32 => "bne",
+    0x06u32 => "blez",
+    0x07u32 => "bgtz",
+    0x08u32 => "addi",
+    0x09u32 => "addiu",
+    0x0Au32 => "slti",
+    0x0Bu32 => "sltiu",
+    0x0Cu32 => "andi",
+    0x0Du32 => "ori",
+    0x0Eu32 => "xori",
+    0x0Fu32 => "lui",
+    0x20u32 => "lb",
+    0x21u32 => "lh",
+    0x23u32 => "lw",
+    0x24u32 => "lbu",
+    0x25u32 => "lhu",
+    0x28u32 => "sb",
+    0x29u32 => "sh",
+    0x2Bu32 => "sw",
+};
+
+/// Get mnemonic for R-type instruction function code
+pub fn get_r_type_mnemonic(function: u32) -> Option<&'static str> {
+    R_TYPE_MNEMONICS.get(&function).copied()
+}
+
+/// Get mnemonic for I-type instruction opcode
+pub fn get_i_type_mnemonic(opcode: u32) -> Option<&'static str> {
+    I_TYPE_MNEMONICS.get(&opcode).copied()
+}
+
+/// Get opcode from instruction word using bitvec
 pub fn get_opcode(instruction: u32) -> u32 {
-    (instruction >> 26) & 0x3F
+    let bits = instruction.view_bits::<bitvec::order::Msb0>();
+    bits[0..6].load_be::<u32>()
 }
 
-/// Get function code from R-type instruction
+/// Get function code from R-type instruction using bitvec
 pub fn get_function(instruction: u32) -> u32 {
-    instruction & 0x3F
+    let bits = instruction.view_bits::<bitvec::order::Msb0>();
+    bits[26..32].load_be::<u32>()
 }
 
-/// Get rs field from instruction
+/// Get rs field from instruction using bitvec
 pub fn get_rs(instruction: u32) -> u32 {
-    (instruction >> 21) & 0x1F
+    let bits = instruction.view_bits::<bitvec::order::Msb0>();
+    bits[6..11].load_be::<u32>()
 }
 
-/// Get rt field from instruction  
+/// Get rt field from instruction using bitvec
 pub fn get_rt(instruction: u32) -> u32 {
-    (instruction >> 16) & 0x1F
+    let bits = instruction.view_bits::<bitvec::order::Msb0>();
+    bits[11..16].load_be::<u32>()
 }
 
-/// Get rd field from R-type instruction
+/// Get rd field from R-type instruction using bitvec
 pub fn get_rd(instruction: u32) -> u32 {
-    (instruction >> 11) & 0x1F
+    let bits = instruction.view_bits::<bitvec::order::Msb0>();
+    bits[16..21].load_be::<u32>()
 }
 
-/// Get shamt field from R-type instruction
+/// Get shamt field from R-type instruction using bitvec
 pub fn get_shamt(instruction: u32) -> u32 {
-    (instruction >> 6) & 0x1F
+    let bits = instruction.view_bits::<bitvec::order::Msb0>();
+    bits[21..26].load_be::<u32>()
 }
 
-/// Get immediate field from I-type instruction
+/// Get immediate field from I-type instruction using bitvec
 pub fn get_immediate(instruction: u32) -> u16 {
-    (instruction & 0xFFFF) as u16
+    let bits = instruction.view_bits::<bitvec::order::Msb0>();
+    bits[16..32].load_be::<u16>()
 }
 
-/// Get address field from J-type instruction
+/// Get address field from J-type instruction using bitvec
 pub fn get_address(instruction: u32) -> u32 {
-    instruction & 0x3FFFFFF
+    let bits = instruction.view_bits::<bitvec::order::Msb0>();
+    bits[6..32].load_be::<u32>()
 }

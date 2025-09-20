@@ -36,3 +36,10 @@ nom = "8.0.0"            # Parser combinator library (was 7.1)
 # Performance optimizations (UPDATED TO LATEST)
 smallvec = "1.13.4"      # Stack-allocated vectors for register files (using stable, not alpha)
 hashbrown = "0.16.0"     # Fast hash maps (was 0.14)
+ahash = "0.8.11"         # Fast hasher for hashbrown maps
+
+# CLI and TUI frameworks (UPDATED TO LATEST)
+clap = { version = "4.5.48", features = ["derive"] }  # Updated to latest
+
+crossterm = "0.29.0"                  # Updated to latest
+ratatui = "0.29.0"                    # Updated to latest stable (not alpha)

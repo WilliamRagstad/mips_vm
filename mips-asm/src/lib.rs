@@ -1,12 +1,12 @@
 //! MIPS assembler frontend
 
-pub mod parser;
 pub mod assembler;
 pub mod output;
+pub mod parser;
 
-pub use parser::*;
 pub use assembler::*;
 pub use output::*;
+pub use parser::*;
 
 use mips_elf::ElfType;
 

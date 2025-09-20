@@ -1,10 +1,10 @@
 //! MIPS instruction decoder
 
-use crate::{Instruction, InstructionFormat};
+use crate::{opcodes, Instruction, InstructionFormat};
 
 /// Decode a 32-bit MIPS instruction
 pub fn decode_instruction(raw: u32) -> Result<Instruction, DecodeError> {
-    let opcode = (raw >> 26) & 0x3F;
+    let opcode = opcodes::get_opcode(raw);
 
     let format = match opcode {
         0x00 => InstructionFormat::R,        // R-type instructions use opcode 0

@@ -15,9 +15,11 @@ mips-vm = { path = "../mips-vm" }
 mips-elf = { path = "../mips-elf" }
 mips-isa = { path = "../mips-isa" }
 mips-util = { path = "../mips-util" }
-crossterm = "0.29.0"     # Updated to latest
-ratatui = "0.29.0"       # Updated to latest stable (not alpha)
+crossterm = { workspace = true }
+ratatui = { workspace = true }
 thiserror = { workspace = true }
-clap = { version = "4.5.48", features = ["derive"] }  # Updated to latest
+clap = { workspace = true, features = ["derive"] }
 # DWARF parsing for source line information in debugger
 gimli = { workspace = true }
+anyhow = { workspace = true }
+log = { workspace = true }

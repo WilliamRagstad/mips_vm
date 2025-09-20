@@ -4,11 +4,13 @@ pub mod abbrev;
 pub mod info;
 pub mod line;
 pub mod str_section;
+pub mod writer;
 
 pub use abbrev::*;
 pub use info::*;
 pub use line::*;
 pub use str_section::*;
+pub use writer::*;
 
 /// DWARF version 4
 pub const DWARF_VERSION: u16 = 4;

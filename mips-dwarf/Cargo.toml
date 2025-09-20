@@ -10,5 +10,4 @@ license = "MIT OR Apache-2.0"
 mips-util = { path = "../mips-util" }
 thiserror = { workspace = true }
 # Standard DWARF parser used by Rust's backtrace and debugging tools
-gimli = { workspace = true }
-# Note: For DWARF generation, you can implement a simple writer or use gimli's utilities
+gimli = { workspace = true, features = ["write"] }
