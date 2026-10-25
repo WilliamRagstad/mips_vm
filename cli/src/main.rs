@@ -105,7 +105,10 @@ fn main() {
                     let dump_path = std::path::PathBuf::from(dump_file);
                     std::fs::write(&dump_path, dump).unwrap();
                 }
-                vm.execute(vm.entrypoint().expect("No entrypoint found"));
+                if let Err(error) = vm.execute(vm.entrypoint().expect("No entrypoint found")) {
+                    eprintln!("Execution fault at {}: {:?}", vm.pc(), error);
+                    std::process::exit(1);
+                }
             }
         }
     }

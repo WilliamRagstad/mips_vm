@@ -162,7 +162,7 @@ impl PageTable {
             let page_offset = offset as usize;
             let write_size = left.min(PAGE_SIZE - page_offset);
             page.data[page_offset..(page_offset + write_size)]
-                .copy_from_slice(&bytes[..write_size]);
+                .copy_from_slice(&bytes[bytes.len() - left..bytes.len() - left + write_size]);
             left -= write_size;
             offset = 0;
             page_number += 1;
@@ -177,8 +177,8 @@ impl PageTable {
     /// # Returns
     /// A vector of slices of the data read from the page.
     pub fn read_bytes(&self, address: Address, size: usize) -> Result<Vec<&[u8]>> {
-        let page_number = address.page_number();
-        let offset = address.page_offset();
+        let mut page_number = address.page_number();
+        let mut offset = address.page_offset();
         let mut data = Vec::new();
         let mut left = size;
         while left > 0 {
@@ -192,6 +192,8 @@ impl PageTable {
             let read_size = left.min(PAGE_SIZE - page_offset);
             data.push(&page.data[page_offset..(page_offset + read_size)]);
             left -= read_size;
+            page_number += 1;
+            offset = 0;
         }
         Ok(data)
     }
@@ -210,6 +212,23 @@ pub struct MemorySegment {
     pub end_address: Address,
     read_handler: Option<ReadHandler>,
     write_handler: Option<WriteHandler>,
+}
+
+impl MemorySegment {
+    pub fn device(
+        start: Address,
+        end: Address,
+        read: fn(Address) -> u8,
+        write: fn(Address, u8),
+    ) -> Self {
+        Self {
+            name: "device".into(),
+            start_address: start,
+            end_address: end,
+            read_handler: Some(read),
+            write_handler: Some(write),
+        }
+    }
 }
 
 pub type LabelMap = HashMap<String, Address>;
@@ -431,8 +450,8 @@ impl Memory {
                 name: "MMIO".to_string(),
                 start_address: mmio.start_address,
                 end_address: mmio.end_address,
-                read_handler: None,
-                write_handler: None,
+                read_handler: mmio.read_handler,
+                write_handler: mmio.write_handler,
             };
             page_table.ensure_pages(
                 mmio.start_address.page_number(),
@@ -476,7 +495,7 @@ impl Memory {
     pub fn find_section(&self, address: Address) -> Result<&MemorySegment> {
         self.sections
             .values()
-            .find(|section| section.start_address <= address && address <= section.end_address)
+            .find(|section| section.start_address <= address && address < section.end_address)
             .ok_or(MemoryError::InvalidSection)
     }
 
@@ -519,9 +538,25 @@ impl Memory {
     }
 
     /// Read from a memory address location and return the data of the specified size
+    pub fn inspect(&self, address: Address, size: usize) -> Result<Vec<u8>> {
+        let section = self.find_section(address)?;
+        if section.read_handler.is_some()
+            || address.unwrap() as u64 + size as u64 > section.end_address.unwrap() as u64
+        {
+            return Err(MemoryError::OutOfBounds);
+        }
+        Ok(self
+            .page_table
+            .read_bytes(address, size)?
+            .into_iter()
+            .flatten()
+            .copied()
+            .collect())
+    }
+
     pub fn read(&mut self, address: Address, size: usize) -> Result<Vec<u8>> {
         let section = self.find_section(address)?;
-        if address + size > section.end_address {
+        if address.unwrap() as u64 + size as u64 > section.end_address.unwrap() as u64 {
             return Err(MemoryError::OutOfBounds); // Out of bounds
         }
         if let Some(data) = self.mmio_try_read_to(section.read_handler, address, size)? {
@@ -591,11 +626,15 @@ impl Memory {
     /// The value is written in between `(start_address + offset)` to `(start_address + offset + value.len())`.
     pub fn write(&mut self, address: Address, bytes: &[u8]) -> Result<()> {
         let section = self.find_section(address)?;
-        if address + bytes.len() > section.end_address {
+        if address.unwrap() as u64 + bytes.len() as u64 > section.end_address.unwrap() as u64 {
             return Err(MemoryError::OutOfBounds); // Out of bounds
         }
-        self.mmio_try_write_to(section.write_handler, address, bytes)?;
-        self.page_table.write_bytes(address, bytes)
+        if section.write_handler.is_some() {
+            self.mmio_try_write_to(section.write_handler, address, bytes)?;
+            Ok(())
+        } else {
+            self.page_table.write_bytes(address, bytes)
+        }
     }
 
     pub fn write_byte(&mut self, address: Address, value: u8) -> Result<()> {
@@ -612,6 +651,9 @@ impl Memory {
 
     /// Currently, only the text section will be executable
     pub fn execute(&self, address: Address) -> Result<&Instruction> {
+        if address.unwrap() % 4 != 0 {
+            return Err(MemoryError::InvalidAddress);
+        }
         if self.text().start_address <= address && address <= self.text().end_address {
             let index = (address - self.text().start_address) as usize / Instruction::size();
             let Some(page) = self.page_table.get_page(address.page_number()) else {
@@ -743,11 +785,18 @@ impl Memory {
     /// - `None` if the allocation is unsuccessful, due to out-of-memory or heap-stack collision.
     pub fn heap_allocate(&mut self, size: usize) -> Result<Address> {
         // Check if the heap section is colliding with the stack section
-        if self.heap().end_address + size >= self.stack().start_address {
+        if self.heap().end_address.unwrap() as u64 + size as u64
+            >= self.stack().start_address.unwrap() as u64
+        {
             return Err(MemoryError::InvalidHeap);
         }
         let address = self.heap_mut().end_address;
         self.heap_mut().end_address += size;
+        self.page_table.ensure_pages(
+            address.page_number(),
+            self.heap().end_address.page_number(),
+            ProtectionLevel::ReadWrite,
+        );
         Ok(address)
     }
 

@@ -1,541 +1,326 @@
-use colorful::Colorful;
-
-use crate::address::Address;
-use crate::memory::MemorySegment;
 use crate::{
-    memory::Memory,
-    program::{Instruction, InstructionArg, InstructionKind, Program, Word, LABEL_COLOR},
+    address::Address,
+    memory::{Memory, MemoryError, MemorySegment},
+    program::{InstructionArg, InstructionKind as K, Program, Word},
     registers::{Register, Registers},
 };
+
+#[derive(Debug, PartialEq)]
+pub enum VmError {
+    Memory(MemoryError),
+    InvalidOperands,
+    Overflow,
+    DivisionByZero,
+    UnsupportedSyscall(u32),
+    Input(String),
+}
+impl From<MemoryError> for VmError {
+    fn from(e: MemoryError) -> Self {
+        Self::Memory(e)
+    }
+}
+pub type Result<T> = std::result::Result<T, VmError>;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Step {
+    Running,
+    Halted,
+}
 
 pub struct VM {
     registers: Registers,
     memory: Memory,
+    pc: Address,
+    halted: bool,
 }
-
 impl VM {
     pub fn new(program: Program, mmio: Vec<MemorySegment>) -> Self {
-        log::debug!(
-            "{}\n{}",
-            "======= LOADED PROGRAM =======".blue(),
-            program.show_color()
-        );
-        let registers = Registers::default();
         let memory = Memory::load(program, mmio);
-        log::trace!("Memory: {:#?}", memory);
-        Self { registers, memory }
-    }
-
-    pub fn entrypoint(&self) -> Option<Address> {
-        self.memory
-            .labels()
+        let pc = ["main", "entry", "start"]
             .iter()
-            .find_map(|(label, address)| {
-                if label.contains("main") || label.contains("entry") || label.contains("start") {
-                    Some(*address)
-                } else {
-                    None
-                }
-            })
-            .or(Some(self.memory.text().start_address))
-        // Or return the first address of the text section
+            .find_map(|s| memory.address_of_label(s).ok())
+            .unwrap_or(memory.text().start_address);
+        Self {
+            registers: Registers::default(),
+            memory,
+            pc,
+            halted: false,
+        }
     }
-
+    pub fn entrypoint(&self) -> Option<Address> {
+        Some(
+            ["main", "entry", "start"]
+                .iter()
+                .find_map(|s| self.memory.address_of_label(s).ok())
+                .unwrap_or(self.memory.text().start_address),
+        )
+    }
     pub fn memory(&self) -> &Memory {
         &self.memory
     }
-
-    pub fn execute(&mut self, entrypoint: Address) {
-        log::debug!("{}", "======= EXECUTION =======".blue());
-
-        // Program counter (instruction pointer): address of the next instruction to execute
-        let mut pc = entrypoint;
-
-        'execution: loop {
-            if let Ok(new_block) = self.memory.label_at_address(pc) {
-                log::debug!(
-                    "Executing block at {} {}...",
-                    pc,
-                    new_block.clone().color(LABEL_COLOR)
-                );
-            }
-            let instruction = self
-                .memory
-                .execute(pc)
-                .unwrap_or_else(|_| panic!("No instruction found at address {}", pc))
-                .clone();
-            let instruction_code = self.memory.read_word(pc).unwrap();
-            log::debug!(
-                "Executing instruction 0x{:08x} at {}: {}",
-                instruction_code,
-                pc,
-                instruction.show_color()
-            );
-
-            // Move pointer to the next instruction in advance
-            pc += Instruction::size();
-
-            // Process the instruction
-            match instruction.kind {
-                InstructionKind::Li => match &instruction.args[0] {
-                    InstructionArg::Register(r) => {
-                        let value = self.load_word(&instruction.args[1]);
-                        self.registers.set(r, value);
-                    }
-                    _ => panic!("Invalid argument for LI instruction"),
-                },
-                InstructionKind::La => match &instruction.args[0] {
-                    InstructionArg::Register(r) => {
-                        let addr = self.load_address(&instruction.args[1]);
-                        self.registers.set(r, addr.unwrap() as Word);
-                    }
-                    _ => panic!("Invalid argument for LA instruction"),
-                },
-                InstructionKind::Move => match &instruction.args[0] {
-                    InstructionArg::Register(r) => {
-                        let value = self.load_word(&instruction.args[1]);
-                        self.registers.set(r, value);
-                    }
-                    _ => panic!("Invalid argument for MOV instruction"),
-                },
-                InstructionKind::Add => self.arithmetic(&instruction.args, |a, b| a + b),
-                InstructionKind::Sub => self.arithmetic(&instruction.args, |a, b| a - b),
-                InstructionKind::Mult => self.arithmetic(&instruction.args, |a, b| a * b),
-                InstructionKind::Div => self.arithmetic(&instruction.args, |a, b| a / b),
-                InstructionKind::And => self.arithmetic(&instruction.args, |a, b| a & b),
-                InstructionKind::Or => self.arithmetic(&instruction.args, |a, b| a | b),
-                InstructionKind::Xor => self.arithmetic(&instruction.args, |a, b| a ^ b),
-                InstructionKind::Nor => self.arithmetic(&instruction.args, |a, b| !(a | b)),
-                InstructionKind::Slt => {
-                    self.arithmetic(&instruction.args, |a, b| if a < b { 1 } else { 0 })
-                }
-                InstructionKind::Sll => self.arithmetic(&instruction.args, |a, b| a << b),
-                InstructionKind::Srl => self.arithmetic(&instruction.args, |a, b| a >> b),
-                InstructionKind::Sra => self.arithmetic(&instruction.args, |a, b| a >> b),
-                InstructionKind::Jr => {
-                    let address = self.load_address(&instruction.args[0]);
-                    log::debug!("Jumping to address {}", address);
-                }
-                InstructionKind::Syscall => {
-                    if !self.syscall() {
-                        break 'execution;
-                    }
-                }
-                InstructionKind::Addi => {
-                    let dest = match &instruction.args[0] {
-                        InstructionArg::Register(r) => r,
-                        _ => panic!("Invalid argument for ADDI instruction"),
-                    };
-                    let src = self.load_word(&instruction.args[1]);
-                    let imm = self.load_word(&instruction.args[2]);
-                    self.registers.set(dest, src + imm);
-                }
-                InstructionKind::Andi => {
-                    let dest = match &instruction.args[0] {
-                        InstructionArg::Register(r) => r,
-                        _ => panic!("Invalid argument for ANDI instruction"),
-                    };
-                    let src = self.load_word(&instruction.args[1]);
-                    let imm = self.load_word(&instruction.args[2]);
-                    self.registers.set(dest, src & imm);
-                }
-                InstructionKind::Beq => {
-                    let lhs = self.load_word(&instruction.args[0]);
-                    let rhs = self.load_word(&instruction.args[1]);
-                    let offset = self.load_word(&instruction.args[2]);
-                    if lhs == rhs {
-                        pc += offset;
-                    }
-                }
-                InstructionKind::Bne => {
-                    let lhs = self.load_word(&instruction.args[0]);
-                    let rhs = self.load_word(&instruction.args[1]);
-                    let offset = self.load_word(&instruction.args[2]);
-                    if lhs != rhs {
-                        pc += offset;
-                    }
-                }
-                InstructionKind::Lw => {
-                    let dest = match &instruction.args[0] {
-                        InstructionArg::Register(r) => r,
-                        _ => panic!("Invalid argument for LW instruction"),
-                    };
-                    let src = Address::new(self.load_word(&instruction.args[1]));
-                    let offset = self.load_word(&instruction.args[2]);
-                    let address = src + offset;
-                    let value = self.memory.read_word(address).unwrap();
-                    self.registers.set(dest, value);
-                }
-                InstructionKind::Sw => {
-                    let src = self.load_word(&instruction.args[0]);
-                    let dest = Address::new(self.load_word(&instruction.args[1]));
-                    self.memory.write(dest, &src.to_le_bytes()).unwrap();
-                }
-                InstructionKind::Lui => {
-                    let dest = match &instruction.args[0] {
-                        InstructionArg::Register(r) => r,
-                        _ => panic!("Invalid argument for LUI instruction"),
-                    };
-                    let imm = self.load_word(&instruction.args[1]);
-                    self.registers.set(dest, imm << 16);
-                }
-                InstructionKind::Nop => { /* Do nothing */ }
-                InstructionKind::J => {
-                    let address = self.load_address(&instruction.args[0]);
-                    pc = address;
-                }
-                InstructionKind::Jal => {
-                    let address = self.load_address(&instruction.args[0]);
-                    self.registers.set(&Register::Ra, pc.unwrap() + 4);
-                    pc = address;
-                }
-                InstructionKind::Addiu => {
-                    let dest = match &instruction.args[0] {
-                        InstructionArg::Register(r) => r,
-                        _ => panic!("Invalid argument for ADDIU instruction"),
-                    };
-                    let src = self.load_word(&instruction.args[1]);
-                    let imm = self.load_word(&instruction.args[2]);
-                    self.registers.set(dest, src.wrapping_add(imm));
-                }
-                InstructionKind::Addu => {
-                    self.arithmetic(&instruction.args, |a, b| a.wrapping_add(b))
-                }
-                InstructionKind::Blez => {
-                    let src = self.load_word(&instruction.args[0]);
-                    let offset = self.load_word(&instruction.args[1]);
-                    if src as i32 <= 0 {
-                        pc += offset;
-                    }
-                }
-                InstructionKind::Bgtz => {
-                    let src = self.load_word(&instruction.args[0]);
-                    let offset = self.load_word(&instruction.args[1]);
-                    if src as i32 > 0 {
-                        pc += offset;
-                    }
-                }
-                InstructionKind::Jalr => {
-                    let dest = match &instruction.args[0] {
-                        InstructionArg::Register(r) => r,
-                        _ => panic!("Invalid argument for JALR instruction"),
-                    };
-                    let address = self.load_address(&instruction.args[1]);
-                    self.registers.set(dest, pc.unwrap());
-                    pc = address;
-                }
-                InstructionKind::Lb => {
-                    let dest = match &instruction.args[0] {
-                        InstructionArg::Register(r) => r,
-                        _ => panic!("Invalid argument for LB instruction"),
-                    };
-                    let address = self.load_address(&instruction.args[1]);
-                    let value = self.memory.read_byte(address).unwrap() as i8 as Word;
-                    self.registers.set(dest, value);
-                }
-                InstructionKind::Lbu => {
-                    let dest = match &instruction.args[0] {
-                        InstructionArg::Register(r) => r,
-                        _ => panic!("Invalid argument for LBU instruction"),
-                    };
-                    let address = self.load_address(&instruction.args[1]);
-                    let value = self.memory.read_byte(address).unwrap() as Word;
-                    self.registers.set(dest, value);
-                }
-                InstructionKind::Lh => {
-                    let dest = match &instruction.args[0] {
-                        InstructionArg::Register(r) => r,
-                        _ => panic!("Invalid argument for LH instruction"),
-                    };
-                    let address = self.load_address(&instruction.args[1]);
-                    let value = self.memory.read_halfword(address).unwrap() as i16 as Word;
-                    self.registers.set(dest, value);
-                }
-                InstructionKind::Lhu => {
-                    let dest = match &instruction.args[0] {
-                        InstructionArg::Register(r) => r,
-                        _ => panic!("Invalid argument for LHU instruction"),
-                    };
-                    let address = self.load_address(&instruction.args[1]);
-                    let value = self.memory.read_halfword(address).unwrap() as Word;
-                    self.registers.set(dest, value);
-                }
-                InstructionKind::Multu => {
-                    self.arithmetic(&instruction.args, |a, b| a.wrapping_mul(b))
-                }
-                InstructionKind::Divu => self.arithmetic(&instruction.args, |a, b| a / b),
-                InstructionKind::Ori => {
-                    let dest = match &instruction.args[0] {
-                        InstructionArg::Register(r) => r,
-                        _ => panic!("Invalid argument for ORI instruction"),
-                    };
-                    let src = self.load_word(&instruction.args[1]);
-                    let imm = self.load_word(&instruction.args[2]);
-                    self.registers.set(dest, src | imm);
-                }
-                InstructionKind::Sltu => {
-                    self.arithmetic(&instruction.args, |a, b| if a < b { 1 } else { 0 })
-                }
-                InstructionKind::Slti => {
-                    let dest = match &instruction.args[0] {
-                        InstructionArg::Register(r) => r,
-                        _ => panic!("Invalid argument for SLTI instruction"),
-                    };
-                    let src = self.load_word(&instruction.args[1]);
-                    let imm = self.load_word(&instruction.args[2]);
-                    self.registers
-                        .set(dest, if (src as i32) < (imm as i32) { 1 } else { 0 });
-                }
-                InstructionKind::Sltiu => {
-                    let dest = match &instruction.args[0] {
-                        InstructionArg::Register(r) => r,
-                        _ => panic!("Invalid argument for SLTIU instruction"),
-                    };
-                    let src = self.load_word(&instruction.args[1]);
-                    let imm = self.load_word(&instruction.args[2]);
-                    self.registers.set(dest, if src < imm { 1 } else { 0 });
-                }
-                InstructionKind::Sllv => self.arithmetic(&instruction.args, |a, b| a << b),
-                InstructionKind::Srav => {
-                    self.arithmetic(&instruction.args, |a, b| (a as i32 >> b) as Word)
-                }
-                InstructionKind::Srlv => self.arithmetic(&instruction.args, |a, b| a >> b),
-                InstructionKind::Sb => {
-                    let value = self.load_word(&instruction.args[0]) as u8;
-                    let address = self.load_address(&instruction.args[1]);
-                    self.memory.write_byte(address, value).unwrap();
-                }
-                InstructionKind::Sh => {
-                    let value = self.load_word(&instruction.args[0]) as u16;
-                    let address = self.load_address(&instruction.args[1]);
-                    self.memory.write_halfword(address, value).unwrap();
-                }
-                InstructionKind::Subu => {
-                    self.arithmetic(&instruction.args, |a, b| a.wrapping_sub(b))
-                }
-                InstructionKind::Xori => {
-                    let dest = match &instruction.args[0] {
-                        InstructionArg::Register(r) => r,
-                        _ => panic!("Invalid argument for XORI instruction"),
-                    };
-                    let src = self.load_word(&instruction.args[1]);
-                    let imm = self.load_word(&instruction.args[2]);
-                    self.registers.set(dest, src ^ imm);
-                }
-            }
-        }
-        log::debug!("{}", "====== Done ======".blue());
+    pub fn registers(&self) -> &Registers {
+        &self.registers
     }
-
-    fn load_word(&mut self, arg: &InstructionArg) -> Word {
-        match arg {
-            InstructionArg::Immediate(value) => *value as Word,
-            InstructionArg::Register(register) => self.registers.get(register),
-            InstructionArg::RegisterOffset(offset, register) => {
-                let base = Address::new(self.registers.get(register));
-                let address = base + *offset;
-                self.memory.read_word(address).unwrap_or_else(|err| {
-                    panic!("Invalid address: {}: {:?}", address, err);
-                })
-            }
-            InstructionArg::Label(label) => {
-                let address = self.memory.address_of_label(label).unwrap();
-                self.memory.read_word(address).unwrap()
-            }
+    pub fn pc(&self) -> Address {
+        self.pc
+    }
+    pub fn halted(&self) -> bool {
+        self.halted
+    }
+    /// Inspect at most 256 bytes. Does not invoke device read handlers.
+    pub fn inspect(&self, address: Address, size: usize) -> Result<Vec<u8>> {
+        if size == 0 || size > 256 {
+            return Err(MemoryError::InvalidSize.into());
+        }
+        Ok(self.memory.inspect(address, size)?)
+    }
+    pub fn execute(&mut self, entrypoint: Address) -> Result<()> {
+        self.pc = entrypoint;
+        while self.step()? != Step::Halted {}
+        Ok(())
+    }
+    fn value(&self, a: &InstructionArg) -> Result<Word> {
+        match a {
+            InstructionArg::Register(r) => Ok(self.registers.get(r)),
+            InstructionArg::Immediate(i) => Ok(*i as u32),
+            _ => Err(VmError::InvalidOperands),
         }
     }
-
-    fn load_address(&self, arg: &InstructionArg) -> Address {
-        match arg {
-            InstructionArg::Immediate(value) => Address::new(*value as u32),
-            InstructionArg::Register(register) => Address::new(self.registers.get(register)),
-            InstructionArg::RegisterOffset(offset, register) => {
-                let base = Address::new(self.registers.get(register));
-                base + *offset
-            }
-            InstructionArg::Label(label) => self.memory.address_of_label(label).unwrap(),
+    fn address(&self, a: &InstructionArg) -> Result<Address> {
+        match a {
+            InstructionArg::Label(l) => Ok(self.memory.address_of_label(l)?),
+            InstructionArg::RegisterOffset(o, r) => Ok(Address::new(
+                self.registers.get(r).wrapping_add(*o as i16 as i32 as u32),
+            )),
+            _ => Ok(Address::new(self.value(a)?)),
         }
     }
-
-    fn arithmetic<F>(&mut self, args: &[InstructionArg], operation: F)
-    where
-        F: Fn(Word, Word) -> Word,
-    {
-        match &args[0] {
-            InstructionArg::Register(r) => {
-                let dest = self.load_word(&args[0]);
-                let src = self.load_word(&args[1]);
-                self.registers.set(r, operation(dest, src));
-            }
-            _ => panic!("Invalid argument for instruction"),
+    /// Execute exactly one IR instruction. Faults leave PC at the faulting instruction.
+    pub fn step(&mut self) -> Result<Step> {
+        if self.halted {
+            return Ok(Step::Halted);
         }
-    }
-
-    fn syscall(&mut self) -> bool {
-        let v0: Syscall = self.registers.get(&Register::V0).into();
-        match v0 {
-            Syscall::PrintInt => {
-                let a0 = self.load_word(&InstructionArg::Register(Register::A0));
-                print!("{}", a0);
-                std::io::Write::flush(&mut std::io::stdout()).unwrap();
-            }
-            Syscall::PrintFloat => {
-                let a0 = self.load_word(&InstructionArg::Register(Register::A0));
-                print!("{}", f32::from_bits(a0));
-                std::io::Write::flush(&mut std::io::stdout()).unwrap();
-            }
-            Syscall::PrintDouble => {
-                let a0 = self.load_word(&InstructionArg::Register(Register::A0));
-                print!("{}", f64::from_bits(a0 as u64));
-                std::io::Write::flush(&mut std::io::stdout()).unwrap();
-            }
-            Syscall::PrintChar => {
-                let a0 = self.load_word(&InstructionArg::Register(Register::A0));
-                print!("{}", a0 as u8 as char);
-                std::io::Write::flush(&mut std::io::stdout()).unwrap();
-            }
-            Syscall::PrintString => {
-                const FLUSH_THRESHOLD: usize = 64;
-                const BUFFER_SIZE: usize = 128;
-                let a0 = Address::new(self.load_word(&InstructionArg::Register(Register::A0)));
-                let mut addr = a0;
-                let mut buffer = [0u8; BUFFER_SIZE];
-                let mut i = 0;
-                'print: loop {
-                    match self.memory.read_buf_max(addr, &mut buffer) {
-                        Ok(n) => {
-                            for &byte in &buffer[..n] {
-                                if byte == 0 {
-                                    break 'print;
-                                }
-                                print!("{}", byte as char);
-                                i += 1;
-                                if i % FLUSH_THRESHOLD == 0 {
-                                    // Flush every 64 characters
-                                    std::io::Write::flush(&mut std::io::stdout()).unwrap();
-                                }
-                            }
-                            if n < BUFFER_SIZE {
-                                // If we read less than the buffer size, we reached the end of the memory section
-                                break 'print;
-                            }
-                            addr += buffer.len();
-                        }
-                        Err(err) => {
-                            panic!(
-                                "Invalid reading {} bytes at address {}: {:?}",
-                                BUFFER_SIZE, addr, err
-                            );
-                        }
-                    }
-                }
-                // Flush the remaining characters
-                std::io::Write::flush(&mut std::io::stdout()).unwrap();
-            }
-            Syscall::ReadInt => {
-                let mut input = String::new();
-                std::io::stdin().read_line(&mut input).unwrap();
-                let value = input.trim().parse::<Word>().unwrap();
-                self.registers.set(&Register::V0, value);
-            }
-            Syscall::ReadFloat => {
-                let mut input = String::new();
-                std::io::stdin().read_line(&mut input).unwrap();
-                let value = input.trim().parse::<f32>().unwrap();
-                self.registers.set(&Register::V0, value.to_bits() as Word);
-            }
-            Syscall::ReadDouble => {
-                let mut input = String::new();
-                std::io::stdin().read_line(&mut input).unwrap();
-                let value = input.trim().parse::<f64>().unwrap();
-                self.registers.set(&Register::V0, value.to_bits() as Word);
-            }
-            Syscall::ReadChar => {
-                let mut input = String::new();
-                std::io::stdin().read_line(&mut input).unwrap();
-                let value = input.trim().chars().next().unwrap() as Word;
-                self.registers.set(&Register::V0, value);
-            }
-            Syscall::ReadString => {
-                let a0 = Address::new(self.load_word(&InstructionArg::Register(Register::A0))); // address of the buffer
-                let a1 = self.load_word(&InstructionArg::Register(Register::A1)); // maximum number of characters to read
-                                                                                  // TODO: Read at most `a1` characters from stdin
-                let mut input = String::with_capacity(a1 as usize);
-                std::io::stdin().read_line(&mut input).unwrap();
-                self.memory
-                    .write(a0, &input.as_bytes()[..a1 as usize])
-                    .unwrap();
-            }
-            Syscall::Sbrk => {
-                let a0 = self.load_word(&InstructionArg::Register(Register::A0));
-                let address = self.memory.heap_allocate(a0 as usize).unwrap();
-                self.registers.set(&Register::V0, address.unwrap());
-            }
-            Syscall::Exit | Syscall::Exit2 => {
-                log::debug!("Exiting program...");
-                // std::process::exit(0);
-                return false;
-            }
+        if self.pc == self.memory.text().end_address {
+            self.halted = true;
+            return Ok(Step::Halted);
+        }
+        let i = self.memory.execute(self.pc)?.clone();
+        let a = &i.args;
+        let expected = match i.kind {
+            K::Nop | K::Syscall => 0,
+            K::J | K::Jal | K::Jr => 1,
+            K::Li
+            | K::La
+            | K::Move
+            | K::Lui
+            | K::Jalr
+            | K::Blez
+            | K::Bgtz
+            | K::Lb
+            | K::Lbu
+            | K::Lh
+            | K::Lhu
+            | K::Lw
+            | K::Sb
+            | K::Sh
+            | K::Sw => 2,
+            _ => 3,
         };
-        true
-    }
-}
-
-#[derive(Debug, PartialEq)]
-enum Syscall {
-    PrintInt = 1,
-    PrintFloat = 2,
-    PrintDouble = 3,
-    PrintChar = 11,
-    PrintString = 4,
-    ReadInt = 5,
-    ReadFloat = 6,
-    ReadDouble = 7,
-    ReadChar = 12,
-    ReadString = 8,
-    /// Sbrk - Increment the program break (brk) pointer
-    /// - `a0`: Number of bytes to increment the program break pointer
-    /// - `v0`: Address of the new program break pointer
-    ///
-    /// On success, the syscall returns the address of the new program break pointer,
-    /// which is the address of the first newly allocated byte.
-    Sbrk = 9,
-    Exit = 10,
-    Exit2 = 17,
-}
-
-impl From<Word> for Syscall {
-    fn from(value: Word) -> Self {
-        match value {
-            _ if value == Syscall::PrintInt as Word => Syscall::PrintInt,
-            _ if value == Syscall::PrintFloat as Word => Syscall::PrintFloat,
-            _ if value == Syscall::PrintDouble as Word => Syscall::PrintDouble,
-            _ if value == Syscall::PrintChar as Word => Syscall::PrintChar,
-            _ if value == Syscall::PrintString as Word => Syscall::PrintString,
-            _ if value == Syscall::ReadInt as Word => Syscall::ReadInt,
-            _ if value == Syscall::ReadFloat as Word => Syscall::ReadFloat,
-            _ if value == Syscall::ReadDouble as Word => Syscall::ReadDouble,
-            _ if value == Syscall::ReadChar as Word => Syscall::ReadChar,
-            _ if value == Syscall::ReadString as Word => Syscall::ReadString,
-            _ if value == Syscall::Sbrk as Word => Syscall::Sbrk,
-            _ if value == Syscall::Exit as Word => Syscall::Exit,
-            _ if value == Syscall::Exit2 as Word => Syscall::Exit2,
-            _ => panic!("Invalid syscall number: {}", value),
+        if a.len() != expected {
+            return Err(VmError::InvalidOperands);
         }
+        let mut next = Address::new(self.pc.unwrap().wrapping_add(4));
+        let dest = || match a.first() {
+            Some(InstructionArg::Register(r)) => Ok(*r),
+            _ => Err(VmError::InvalidOperands),
+        };
+        match i.kind {
+            K::Nop => {}
+            K::Syscall => {
+                if !self.syscall()? {
+                    self.halted = true;
+                }
+            }
+            K::J | K::Jr | K::Jal => {
+                let target = self.address(&a[0])?;
+                self.memory.execute(target)?;
+                if i.kind == K::Jal {
+                    self.registers.set(&Register::Ra, next.unwrap());
+                }
+                next = target;
+            }
+            K::Jalr => {
+                let r = dest()?;
+                let target = self.address(&a[1])?;
+                self.memory.execute(target)?;
+                self.registers.set(&r, next.unwrap());
+                next = target;
+            }
+            K::Beq | K::Bne | K::Blez | K::Bgtz => {
+                let x = self.value(&a[0])?;
+                let taken = match i.kind {
+                    K::Beq => x == self.value(&a[1])?,
+                    K::Bne => x != self.value(&a[1])?,
+                    K::Blez => (x as i32) <= 0,
+                    _ => (x as i32) > 0,
+                };
+                if taken {
+                    next = match a.last().unwrap() {
+                        InstructionArg::Immediate(o) => {
+                            Address::new(next.unwrap().wrapping_add((*o as i16 as i32 * 4) as u32))
+                        }
+                        arg => self.address(arg)?,
+                    };
+                    self.memory.execute(next)?;
+                }
+            }
+            K::Li | K::Move | K::La | K::Lui => {
+                let r = dest()?;
+                let v = match i.kind {
+                    K::La => self.address(&a[1])?.unwrap(),
+                    K::Lui => self.value(&a[1])? << 16,
+                    _ => self.value(&a[1])?,
+                };
+                self.registers.set(&r, v);
+            }
+            K::Lb | K::Lbu | K::Lh | K::Lhu | K::Lw => {
+                let r = dest()?;
+                let address = self.address(&a[1])?;
+                let width = match i.kind {
+                    K::Lw => 4,
+                    K::Lh | K::Lhu => 2,
+                    _ => 1,
+                };
+                if address.unwrap() % width != 0 {
+                    return Err(MemoryError::InvalidAddress.into());
+                }
+                let v = match i.kind {
+                    K::Lb => self.memory.read_byte(address)? as i8 as u32,
+                    K::Lbu => self.memory.read_byte(address)? as u32,
+                    K::Lh => self.memory.read_halfword(address)? as i16 as u32,
+                    K::Lhu => self.memory.read_halfword(address)? as u32,
+                    _ => self.memory.read_word(address)?,
+                };
+                self.registers.set(&r, v);
+            }
+            K::Sb | K::Sh | K::Sw => {
+                let v = self.value(&a[0])?;
+                let address = self.address(&a[1])?;
+                let width = match i.kind {
+                    K::Sw => 4,
+                    K::Sh => 2,
+                    _ => 1,
+                };
+                if address.unwrap() % width != 0 {
+                    return Err(MemoryError::InvalidAddress.into());
+                }
+                self.memory
+                    .write(address, &v.to_le_bytes()[..width as usize])?;
+            }
+            _ => {
+                let r = dest()?;
+                let x = self.value(&a[1])?;
+                let mut y = self.value(&a[2])?;
+                if matches!(i.kind, K::Addi | K::Addiu | K::Slti | K::Sltiu) {
+                    y = y as u16 as i16 as i32 as u32;
+                }
+                let v = match i.kind {
+                    K::Add | K::Addi => {
+                        (x as i32).checked_add(y as i32).ok_or(VmError::Overflow)? as u32
+                    }
+                    K::Sub => (x as i32).checked_sub(y as i32).ok_or(VmError::Overflow)? as u32,
+                    K::Addu | K::Addiu => x.wrapping_add(y),
+                    K::Subu => x.wrapping_sub(y),
+                    K::Mult | K::Multu => x.wrapping_mul(y),
+                    K::Div => {
+                        if y == 0 {
+                            return Err(VmError::DivisionByZero);
+                        }
+                        (x as i32).wrapping_div(y as i32) as u32
+                    }
+                    K::Divu => x.checked_div(y).ok_or(VmError::DivisionByZero)?,
+                    K::And | K::Andi => x & y,
+                    K::Or | K::Ori => x | y,
+                    K::Xor | K::Xori => x ^ y,
+                    K::Nor => !(x | y),
+                    K::Slt | K::Slti => ((x as i32) < (y as i32)) as u32,
+                    K::Sltu | K::Sltiu => (x < y) as u32,
+                    K::Sll | K::Sllv => x << (y & 31),
+                    K::Srl | K::Srlv => x >> (y & 31),
+                    K::Sra | K::Srav => ((x as i32) >> (y & 31)) as u32,
+                    _ => return Err(VmError::InvalidOperands),
+                };
+                self.registers.set(&r, v);
+            }
+        }
+        self.pc = next;
+        Ok(if self.halted {
+            Step::Halted
+        } else {
+            Step::Running
+        })
     }
-}
-
-#[cfg(test)]
-mod test_interpreter {
-    use crate::{parser::parse, vm::VM};
-
-    #[test]
-    fn hello_world() {
-        let input = include_str!("../../examples/hello_world.asm");
-        let prog = parse(input);
-        assert_ne!(prog, None);
-        let program = prog.unwrap();
-        let mut vm = VM::new(program, Vec::new());
-        vm.execute(vm.entrypoint().expect("No entrypoint found"));
+    fn syscall(&mut self) -> Result<bool> {
+        use std::io::{self, Write};
+        let n = self.registers.get(&Register::V0);
+        let a0 = self.registers.get(&Register::A0);
+        match n {
+            1 => print!("{}", a0 as i32),
+            4 => {
+                let mut address = Address::new(a0);
+                loop {
+                    let b = self.memory.read_byte(address)?;
+                    if b == 0 {
+                        break;
+                    }
+                    print!("{}", b as char);
+                    address = Address::new(
+                        address
+                            .unwrap()
+                            .checked_add(1)
+                            .ok_or(MemoryError::OutOfBounds)?,
+                    );
+                }
+            }
+            5 | 12 => {
+                let mut s = String::new();
+                io::stdin()
+                    .read_line(&mut s)
+                    .map_err(|e| VmError::Input(e.to_string()))?;
+                let v = if n == 5 {
+                    s.trim()
+                        .parse::<i32>()
+                        .map_err(|e| VmError::Input(e.to_string()))? as u32
+                } else {
+                    s.bytes()
+                        .next()
+                        .ok_or_else(|| VmError::Input("EOF".into()))? as u32
+                };
+                self.registers.set(&Register::V0, v);
+            }
+            8 => {
+                let size = self.registers.get(&Register::A1) as usize;
+                if size > 0 {
+                    let mut s = String::new();
+                    io::stdin()
+                        .read_line(&mut s)
+                        .map_err(|e| VmError::Input(e.to_string()))?;
+                    let mut bytes = s.into_bytes();
+                    bytes.truncate(size - 1);
+                    bytes.push(0);
+                    self.memory.write(Address::new(a0), &bytes)?;
+                }
+            }
+            9 => {
+                let addr = self.memory.heap_allocate(a0 as usize)?;
+                self.registers.set(&Register::V0, addr.unwrap());
+            }
+            10 | 17 => return Ok(false),
+            11 => print!("{}", a0 as u8 as char),
+            _ => return Err(VmError::UnsupportedSyscall(n)),
+        }
+        io::stdout()
+            .flush()
+            .map_err(|e| VmError::Input(e.to_string()))?;
+        Ok(true)
     }
 }
