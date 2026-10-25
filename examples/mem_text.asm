@@ -1,10 +1,13 @@
+.data
+value: .word 0
 .text
-	addi $a1, $a0, 76
-	addi $a2, $a0, 128000000
-	sw $a1, 0($a2)
-	lw $a3, 0($a2)
-
-	# Print word at register $a3
-	li $v0, 1
-	move $a0, $a3
-	syscall
+main:
+    li $a1, 76
+    la $a2, value
+    sw $a1, 0($a2)
+    lw $a3, 0($a2)
+    li $v0, 1
+    move $a0, $a3
+    syscall
+    li $v0, 10
+    syscall

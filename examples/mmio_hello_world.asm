@@ -9,9 +9,14 @@ main:
 
 echo:
 	jal Read  # read and write using MMIO
-	add $a0, $v0, $zero # infinite loop
+	beq $v0, $zero, Done # EOF (or NUL) terminates the CLI adapter
+	add $a0, $v0, $zero
 	jal Write
 	j echo
+
+Done:
+	li $v0, 10
+	syscall
 
 Read:
 	lui $t0, 0xffff # MMIO base address

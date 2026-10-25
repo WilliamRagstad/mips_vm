@@ -4,12 +4,17 @@ A *simple and experimental* MIPS virtual machine, currently interpreting assembl
 
 > MIPS (Microprocessor without Interlocked Pipelined Stages) is a family of reduced instruction set computer (RISC) instruction set architectures (ISA).<sup>[3](#references)</sup>
 
+Use `cargo run -p mips_cli -- debug examples/debug.asm` for stepping, breakpoints,
+registers, and bounded memory inspection. See the [walkthrough](docs/debugging.md)
+and [supported dialect / MARS comparison](docs/dialect.md). Run the conformance
+suite with `cargo test --workspace` before architecture or JIT work.
+
 ## Roadmap
 
 <details>
 <summary>Tasks</summary>
 
-- [X] MIPS32 (I)
+- [X] Educational MIPS32-style interpreter subset ([dialect](docs/dialect.md))
 - [ ] MIPS64 (II)
 - [X] Assembler
   - [X] Lexer
@@ -48,7 +53,7 @@ A *simple and experimental* MIPS virtual machine, currently interpreting assembl
   - [ ] Target platforms
     - [ ] Windows (PE)
     - [ ] Linux (ELF)
-- [ ] Debugger
+- [X] CLI debugger ([walkthrough](docs/debugging.md))
 - [ ] Profiler
 - [ ] Multi-threading
 
@@ -74,7 +79,7 @@ main:
 ```
 
 ```bash
-$ cargo run -- ./tests/prog1.asm
+$ cargo run -p mips_cli -- run examples/hello_world.asm
 Hello, world!
 ```
 
