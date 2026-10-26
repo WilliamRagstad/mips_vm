@@ -12,8 +12,8 @@ data_directive    = @{ ".align" | ".asciiz" | ".ascii" | ".word" | ".byte" | ".s
 text_directive    = @{ ".global" | ".globl" }
 
 opcode = @{
-    "addi"
-  | "addiu"
+    "addiu"
+  | "addi"
   | "addu"
   | "add"
   | "andi"
@@ -48,7 +48,7 @@ opcode = @{
   | "xori"
   | "xor"
 }
-pseudo = @{ "la" | "li" | "ble" | "move" | "nop" | "syscall" }
+pseudo = @{ "la" | "li" | "move" | "nop" | "syscall" }
 
 args = _{ (arg ~ ("," ~ arg)*) }
 arg  = _{ (register | offset | immediate | string | identifier) }

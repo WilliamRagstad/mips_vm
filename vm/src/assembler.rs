@@ -275,9 +275,11 @@ pub fn info(instruction: &Instruction, labels: &LabelMap) -> InstructionInfo {
         InstructionKind::Blez => {
             InstructionInfo::new(InstructionFormat::immediate(reg(), None, imm()), 6, 0)
         }
-        InstructionKind::Bne => {
-            InstructionInfo::new(InstructionFormat::immediate(reg(), reg(), imm()), 5, 0)
-        }
+        InstructionKind::Bne => InstructionInfo::new(
+            InstructionFormat::immediate(reg(), reg(), addr().unwrap() as u16),
+            5,
+            0,
+        ),
         InstructionKind::Bgtz => {
             InstructionInfo::new(InstructionFormat::immediate(reg(), None, imm()), 7, 0)
         }

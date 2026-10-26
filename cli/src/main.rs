@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 use mips_vm::{compiler::Compiler, parser::parse, vm::VM};
 
+mod debugger;
 mod mmio;
 
 /// Simple program to run MIPS VM
@@ -31,6 +32,8 @@ impl From<Target> for mips_vm::compiler::Target {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Debug the input file interactively
+    Debug { input: String },
     /// Compile the input file
     #[command(name = "compile", alias = "c")]
     Compile {
@@ -64,6 +67,20 @@ fn main() {
     log_init();
     let args = Cli::parse();
     match args.command {
+        Commands::Debug { input } => {
+            let source = std::fs::read_to_string(input).expect("Failed to read input file");
+            if let Some(program) = parse(&source) {
+                let mut vm = VM::new(program, mmio::console());
+                debugger::run(
+                    &mut vm,
+                    &mut std::io::stdin().lock(),
+                    &mut std::io::stdout(),
+                )
+                .expect("Debugger I/O failed");
+            } else {
+                std::process::exit(1);
+            }
+        }
         Commands::Compile {
             input,
             output,
@@ -98,14 +115,17 @@ fn main() {
         } => {
             let input_content = std::fs::read_to_string(input).expect("Failed to read input file");
             if let Some(program) = parse(&input_content) {
-                let mmio = Vec::new();
+                let mmio = mmio::console();
                 let mut vm = VM::new(program, mmio);
                 if let Some(dump_file) = dump_file {
                     let dump = vm.memory().dump(!non_compressed, shard_size, false);
                     let dump_path = std::path::PathBuf::from(dump_file);
                     std::fs::write(&dump_path, dump).unwrap();
                 }
-                vm.execute(vm.entrypoint().expect("No entrypoint found"));
+                if let Err(error) = vm.execute(vm.entrypoint().expect("No entrypoint found")) {
+                    eprintln!("Execution fault at {}: {:?}", vm.pc(), error);
+                    std::process::exit(1);
+                }
             }
         }
     }
